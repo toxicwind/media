@@ -31,6 +31,8 @@ import static android.media.MediaCodecInfo.CodecProfileLevel.HEVCProfileMain10;
 import static android.os.Build.VERSION.SDK_INT;
 import static android.view.Display.DEFAULT_DISPLAY;
 import static androidx.media3.common.util.Util.msToUs;
+import static androidx.media3.exoplayer.DecoderReuseEvaluation.DISCARD_REASON_WORKAROUND;
+import static androidx.media3.exoplayer.DecoderReuseEvaluation.REUSE_RESULT_NO;
 import static androidx.media3.exoplayer.Renderer.STATE_STARTED;
 import static androidx.media3.exoplayer.mediacodec.MediaCodecUtil.createCodecProfileLevel;
 import static androidx.media3.test.utils.FakeSampleStream.FakeSampleStreamItem.END_OF_STREAM_ITEM;
@@ -60,6 +62,7 @@ import android.media.MediaCodec;
 import android.media.MediaCodecInfo.CodecCapabilities;
 import android.media.MediaCodecInfo.CodecProfileLevel;
 import android.media.MediaFormat;
+import android.os.Build;
 import android.os.Bundle;
 import android.os.Handler;
 import android.os.Looper;
@@ -80,6 +83,7 @@ import androidx.media3.common.util.ThrowingRunnable;
 import androidx.media3.decoder.DecoderInputBuffer;
 import androidx.media3.exoplayer.CodecParameters;
 import androidx.media3.exoplayer.DecoderCounters;
+import androidx.media3.exoplayer.DecoderReuseEvaluation;
 import androidx.media3.exoplayer.ExoPlaybackException;
 import androidx.media3.exoplayer.FormatHolder;
 import androidx.media3.exoplayer.LoadingInfo;
@@ -122,6 +126,7 @@ import com.google.common.collect.ImmutableList;
 import com.google.common.primitives.Bytes;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
 import java.io.IOException;
+import java.lang.reflect.Field;
 import java.nio.ByteBuffer;
 import java.time.Duration;
 import java.util.ArrayList;
@@ -142,6 +147,7 @@ import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
 import org.robolectric.Shadows;
 import org.robolectric.annotation.Config;
+import org.robolectric.shadows.ShadowBuild;
 import org.robolectric.shadows.ShadowDisplay;
 import org.robolectric.shadows.ShadowLooper;
 import org.robolectric.shadows.ShadowMediaCodec;
@@ -7925,5 +7931,119 @@ public class MediaCodecVideoRendererTest {
     public void releaseOutputBuffer(int index, long renderTimeStampNs) {
       // No-op
     }
+  }
+
+  // ---- Gate B (issue #3185): Pixel 10 family device-aware mitigation ----
+
+  @Test
+  public void canReuseCodec_pixel10_sameAvcKeyDifferentBitrate_returnsNo() throws Exception {
+    fakeDevice(/* device= */ "mustang", /* model= */ "Pixel 10 Pro XL");
+    try {
+      setCodecMaxValuesForTest();
+      // The Tensor G5 hardware AVC decoder freezes on any bitrate switch, so on Pixel 10
+      // family devices the renderer must refuse codec reuse (drain-and-reinitialize).
+      DecoderReuseEvaluation evaluation =
+          mediaCodecVideoRenderer.canReuseCodec(
+              H264_PROFILE8_LEVEL5_SW_MEDIA_CODEC_INFO,
+              avcFormat("avc1.64001F", /* bitrate= */ 400_000),
+              avcFormat("avc1.64001F", /* bitrate= */ 800_000),
+              /* isAdaptiveFormatChange= */ true);
+      assertThat(evaluation.result).isEqualTo(REUSE_RESULT_NO);
+      assertThat(evaluation.discardReasons & DISCARD_REASON_WORKAROUND).isNotEqualTo(0);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  @Test
+  public void canReuseCodec_pixel10_unequalAvcKeys_returnsNo() throws Exception {
+    fakeDevice(/* device= */ "blazer", /* model= */ "Pixel 10 Pro");
+    try {
+      setCodecMaxValuesForTest();
+      // The exact codec strings from the issue #3185 report: SD avc1.4D401F, HD avc1.64002A.
+      DecoderReuseEvaluation evaluation =
+          mediaCodecVideoRenderer.canReuseCodec(
+              H264_PROFILE8_LEVEL5_SW_MEDIA_CODEC_INFO,
+              avcFormat("avc1.4D401F", /* bitrate= */ 400_000),
+              avcFormat("avc1.64002A", /* bitrate= */ 2_000_000),
+              /* isAdaptiveFormatChange= */ true);
+      assertThat(evaluation.result).isEqualTo(REUSE_RESULT_NO);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  @Test
+  public void canReuseCodec_pixel9_sameAvcKeyDifferentBitrate_reuseUnchanged() throws Exception {
+    fakeDevice(/* device= */ "tokay", /* model= */ "Pixel 9");
+    try {
+      setCodecMaxValuesForTest();
+      // Off the Pixel 10 family, Gate B is a no-op: the same-key bitrate switch keeps the
+      // default reuse behavior (no discard reasons at all for this codec/format pair).
+      DecoderReuseEvaluation evaluation =
+          mediaCodecVideoRenderer.canReuseCodec(
+              H264_PROFILE8_LEVEL5_SW_MEDIA_CODEC_INFO,
+              avcFormat("avc1.64001F", /* bitrate= */ 400_000),
+              avcFormat("avc1.64001F", /* bitrate= */ 800_000),
+              /* isAdaptiveFormatChange= */ true);
+      assertThat(evaluation.result).isNotEqualTo(REUSE_RESULT_NO);
+      assertThat(evaluation.discardReasons).isEqualTo(0);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  @Test
+  public void canReuseCodec_pixel10_malformedAvcCodecString_reuseUnchanged() throws Exception {
+    fakeDevice(/* device= */ "frankel", /* model= */ "Pixel 10");
+    try {
+      setCodecMaxValuesForTest();
+      // Malformed codec strings fail open: the gate cannot determine the keys, so the
+      // default reuse behavior applies even on Pixel 10.
+      DecoderReuseEvaluation evaluation =
+          mediaCodecVideoRenderer.canReuseCodec(
+              H264_PROFILE8_LEVEL5_SW_MEDIA_CODEC_INFO,
+              avcFormat("avc1.6400", /* bitrate= */ 400_000),
+              avcFormat("avc1.6400", /* bitrate= */ 800_000),
+              /* isAdaptiveFormatChange= */ true);
+      assertThat(evaluation.result).isNotEqualTo(REUSE_RESULT_NO);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  private static Format avcFormat(String codecs, int bitrate) {
+    return VIDEO_H264.buildUpon().setCodecs(codecs).setAverageBitrate(bitrate).build();
+  }
+
+  private void setCodecMaxValuesForTest() throws Exception {
+    // canReuseCodec reads the configured maximum values; mirror a configured codec with
+    // generous limits so only the Gate B logic can force a REUSE_RESULT_NO.
+    Field field = MediaCodecVideoRenderer.class.getDeclaredField("codecMaxValues");
+    field.setAccessible(true);
+    field.set(
+        mediaCodecVideoRenderer,
+        new MediaCodecVideoRenderer.CodecMaxValues(
+            /* width= */ 4096, /* height= */ 2160, /* inputSize= */ Integer.MAX_VALUE));
+  }
+
+  private String originalDevice;
+  private String originalModel;
+  private String originalProduct;
+
+  /** Fakes a Pixel device via Robolectric's {@link ShadowBuild}; callers must use try/finally. */
+  private void fakeDevice(String device, String model) {
+    originalDevice = Build.DEVICE;
+    originalModel = Build.MODEL;
+    originalProduct = Build.PRODUCT;
+    ShadowBuild.setDevice(device);
+    ShadowBuild.setModel(model);
+    ShadowBuild.setProduct(device);
+  }
+
+  private void restoreDevice() {
+    ShadowBuild.setDevice(originalDevice);
+    ShadowBuild.setModel(originalModel);
+    ShadowBuild.setProduct(originalProduct);
   }
 }

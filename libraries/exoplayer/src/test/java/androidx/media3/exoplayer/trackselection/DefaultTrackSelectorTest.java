@@ -47,6 +47,7 @@ import static org.robolectric.Shadows.shadowOf;
 
 import android.content.Context;
 import android.media.Spatializer;
+import android.os.Build;
 import android.view.accessibility.CaptioningManager;
 import androidx.media3.common.C;
 import androidx.media3.common.ColorInfo;
@@ -94,6 +95,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.robolectric.shadows.ShadowBuild;
 import org.robolectric.shadows.ShadowDisplay;
 import org.robolectric.shadows.ShadowDisplayManager;
 
@@ -2312,6 +2314,136 @@ public final class DefaultTrackSelectorTest {
             new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
     assertThat(result.length).isEqualTo(1);
     assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+  }
+
+  // ---- Gate B (issue #3185): Pixel 10 family device-aware mitigation ----
+
+  @Test
+  public void selectTracks_pixel10_sameAvcProfileLevelDifferentBitrates_selectsFixed()
+      throws Exception {
+    fakeDevice(/* device= */ "mustang", /* model= */ "Pixel 10 Pro XL");
+    try {
+      Format firstFormat =
+          VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(400000).build();
+      Format secondFormat =
+          VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(800000).build();
+
+      // On Pixel 10 family devices the Tensor G5 hardware AVC decoder freezes on any bitrate
+      // switch, so same-profile/level tracks with differing bitrates must not share an adaptive
+      // selection: expect a fixed (single-track) selection instead of an adaptive one.
+      TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+      TrackSelectorResult result =
+          trackSelector.selectTracks(
+              new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+      assertThat(result.length).isEqualTo(1);
+      assertThat(result.selections[0]).isInstanceOf(FixedTrackSelection.class);
+      assertThat(result.selections[0].length()).isEqualTo(1);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  @Test
+  public void selectTracks_pixel10_mixedAvcProfiles_selectsFixed() throws Exception {
+    fakeDevice(/* device= */ "blazer", /* model= */ "Pixel 10 Pro");
+    try {
+      // The exact codec strings from the issue #3185 report: SD avc1.4D401F, HD avc1.64002A.
+      Format sdFormat = VIDEO_FORMAT.buildUpon().setCodecs("avc1.4D401F").build();
+      Format hdFormat = VIDEO_FORMAT.buildUpon().setCodecs("avc1.64002A").build();
+      TrackGroupArray trackGroups = singleTrackGroup(sdFormat, hdFormat);
+      TrackSelectorResult result =
+          trackSelector.selectTracks(
+              new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+      assertThat(result.length).isEqualTo(1);
+      assertFixedSelection(result.selections[0], trackGroups, sdFormat);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  @Test
+  public void selectTracks_pixel9Family_sameAvcProfileLevelDifferentBitrates_selectsAdaptive()
+      throws Exception {
+    String[][] pixel9Devices = {
+      {"tokay", "Pixel 9"},
+      {"komodo", "Pixel 9 Pro XL"},
+      {"comet", "Pixel 9 Pro Fold"},
+    };
+    for (String[] pixel9Device : pixel9Devices) {
+      fakeDevice(pixel9Device[0], pixel9Device[1]);
+      try {
+        Format firstFormat =
+            VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(400000).build();
+        Format secondFormat =
+            VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(800000).build();
+
+        // Off the Pixel 10 family, Gate B is a no-op: same-profile/level bitrate switches
+        // stay compatible (normal ABR), ordered by descending bitrate.
+        TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+        TrackSelectorResult result =
+            trackSelector.selectTracks(
+                new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+        assertThat(result.length).isEqualTo(1);
+        assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+      } finally {
+        restoreDevice();
+      }
+    }
+  }
+
+  @Test
+  public void selectTracks_pixel10_malformedOrMissingAvcCodecStrings_staysAdaptive()
+      throws Exception {
+    fakeDevice(/* device= */ "frankel", /* model= */ "Pixel 10");
+    try {
+      // Malformed, multi-codec, and non-AVC codec strings fail open even on Pixel 10.
+      String[] badCodecStrings = {
+        "avc1.6400", "avc1.6400zz", "avc1.64001f,mp4a.40.2", "mp4a.40.2",
+      };
+      for (String codecs : badCodecStrings) {
+        Format firstFormat =
+            VIDEO_FORMAT.buildUpon().setCodecs(codecs).setAverageBitrate(400000).build();
+        Format secondFormat =
+            VIDEO_FORMAT.buildUpon().setCodecs(codecs).setAverageBitrate(800000).build();
+        TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+        TrackSelectorResult result =
+            trackSelector.selectTracks(
+                new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+        assertThat(result.length).isEqualTo(1);
+        assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+      }
+      // Missing codec strings fail open too.
+      Format firstFormat = VIDEO_FORMAT.buildUpon().setAverageBitrate(400000).build();
+      Format secondFormat = VIDEO_FORMAT.buildUpon().setAverageBitrate(800000).build();
+      TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+      TrackSelectorResult result =
+          trackSelector.selectTracks(
+              new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+      assertThat(result.length).isEqualTo(1);
+      assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  private String originalDevice;
+  private String originalModel;
+  private String originalProduct;
+
+  /** Fakes a Pixel device via Robolectric's {@link ShadowBuild}; callers must use try/finally. */
+  private void fakeDevice(String device, String model) {
+    originalDevice = Build.DEVICE;
+    originalModel = Build.MODEL;
+    originalProduct = Build.PRODUCT;
+    ShadowBuild.setDevice(device);
+    ShadowBuild.setModel(model);
+    ShadowBuild.setProduct(device);
+  }
+
+  private void restoreDevice() {
+    ShadowBuild.setDevice(originalDevice);
+    ShadowBuild.setModel(originalModel);
+    ShadowBuild.setProduct(originalProduct);
   }
 
   @Test

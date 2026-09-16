@@ -21,6 +21,7 @@ import static com.google.common.truth.Truth.assertThat;
 import static org.mockito.Mockito.when;
 
 import android.content.Context;
+import android.os.Build;
 import androidx.annotation.Nullable;
 import androidx.media3.common.C;
 import androidx.media3.common.Format;
@@ -32,6 +33,7 @@ import androidx.media3.exoplayer.source.MediaSource;
 import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.trackselection.TrackSelector.InvalidationListener;
 import androidx.media3.exoplayer.upstream.BandwidthMeter;
+import androidx.media3.exoplayer.util.Pixel10FamilyDevice;
 import androidx.media3.test.utils.FakeTimeline;
 import androidx.test.core.app.ApplicationProvider;
 import androidx.test.ext.junit.runners.AndroidJUnit4;
@@ -41,6 +43,7 @@ import org.junit.Test;
 import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.MockitoAnnotations;
+import org.robolectric.shadows.ShadowBuild;
 
 /**
  * Micro-benchmarks for the AVC profile/level parsing used by {@link DefaultTrackSelector}'s
@@ -208,6 +211,58 @@ public final class DefaultTrackSelectorAvcBenchmarkTest {
 
     // Generous budget: track selection must stay comfortably interactive.
     assertThat(perSelectionUs).isLessThan(50_000.0);
+  }
+
+  @Test
+  public void pixel10GateB_canReuseCodecPredicate_latencyWithinBudget() {
+    // Exercise the true path: fake a Pixel 10 Pro XL so the device check passes and the
+    // profile/level keys are actually compared.
+    String originalDevice = Build.DEVICE;
+    String originalModel = Build.MODEL;
+    String originalProduct = Build.PRODUCT;
+    ShadowBuild.setDevice("mustang");
+    ShadowBuild.setModel("Pixel 10 Pro XL");
+    ShadowBuild.setProduct("mustang");
+    try {
+      Format oldFormat =
+          new Format.Builder()
+              .setSampleMimeType(MimeTypes.VIDEO_H264)
+              .setCodecs("avc1.64001F")
+              .setAverageBitrate(400_000)
+              .build();
+      Format newFormat =
+          new Format.Builder()
+              .setSampleMimeType(MimeTypes.VIDEO_H264)
+              .setCodecs("avc1.64001F")
+              .setAverageBitrate(800_000)
+              .build();
+
+      // Warm up the JIT and the profile/level key cache.
+      for (int i = 0; i < 10_000; i++) {
+        Pixel10FamilyDevice.shouldForceAvcCodecReinit(oldFormat, newFormat);
+      }
+
+      int iterations = 200_000;
+      long startNs = System.nanoTime();
+      for (int i = 0; i < iterations; i++) {
+        Pixel10FamilyDevice.shouldForceAvcCodecReinit(oldFormat, newFormat);
+      }
+      long totalNs = System.nanoTime() - startNs;
+      double perOpNs = (double) totalNs / iterations;
+      System.out.println(
+          String.format(
+              "Pixel 10 Gate B canReuseCodec predicate (%d iterations): %.1f ns/op",
+              iterations, perOpNs));
+
+      // Sanity: the predicate must actually fire on this device/format pair.
+      assertThat(Pixel10FamilyDevice.shouldForceAvcCodecReinit(oldFormat, newFormat)).isTrue();
+      // Generous budget: the check must stay far below a microsecond per call.
+      assertThat(perOpNs).isLessThan(1_000.0);
+    } finally {
+      ShadowBuild.setDevice(originalDevice);
+      ShadowBuild.setModel(originalModel);
+      ShadowBuild.setProduct(originalProduct);
+    }
   }
 
   /** Minimal {@link RendererCapabilities} stub advertising seamless adaptation for video. */
