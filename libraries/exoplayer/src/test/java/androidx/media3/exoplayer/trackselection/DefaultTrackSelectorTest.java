@@ -2171,6 +2171,150 @@ public final class DefaultTrackSelectorTest {
   }
 
   @Test
+  public void selectTracksWithMultipleVideoTracksWithMixedAvcProfiles() throws Exception {
+    Format baselineFormat = VIDEO_FORMAT.buildUpon().setCodecs("avc1.42001F").build();
+    Format highFormat = VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").build();
+
+    // Tracks with different AVC profiles must not share an adaptive selection, so we expect a
+    // fixed selection containing the first stream.
+    TrackGroupArray trackGroups = singleTrackGroup(baselineFormat, highFormat);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, baselineFormat);
+
+    // The same applies if the tracks are provided in the opposite order.
+    trackGroups = singleTrackGroup(highFormat, baselineFormat);
+    result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, highFormat);
+  }
+
+  @Test
+  public void selectTracksWithMultipleVideoTracksWithMixedAvcLevels() throws Exception {
+    Format level31Format = VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").build();
+    Format level40Format = VIDEO_FORMAT.buildUpon().setCodecs("avc1.640028").build();
+
+    // Tracks with different AVC levels must not share an adaptive selection either.
+    TrackGroupArray trackGroups = singleTrackGroup(level31Format, level40Format);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, level31Format);
+  }
+
+  @Test
+  public void selectTracksWithMultipleVideoTracksWithSameAvcProfileAndLevel() throws Exception {
+    Format firstFormat =
+        VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(400000).build();
+    Format secondFormat =
+        VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(800000).build();
+
+    // Tracks declaring the same AVC profile and level still share an adaptive selection
+    // (ordered by descending bitrate).
+    TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+  }
+
+  /**
+   * avcC box payloads (AVCDecoderConfigurationRecord) extracted from real Big Buck Bunny files.
+   * Byte 1 is profile_idc, byte 2 profile_compatibility, byte 3 level_idc, so the RFC 6381 codec
+   * string is {@code "avc1." + hex(bytes 1..3)}.
+   */
+  private static final String IA_BBB_AVCC_HEX =
+      "0142c00dffe1001b6742c00dab40d0fdff80140013880000030008000003018478a15501000468ce32c8";
+
+  private static final String BBB_BASELINE_AVCC_HEX =
+      "0142c01effe1001c6742c01ed901a1fbff00d500d01000000300100000030300f162e48001000568cb83cb20";
+  private static final String BBB_HIGH_AVCC_HEX =
+      "01640028ffe1001d67640028acd941a1fbff00d500d01000000300100000030300f183196001000668ebe3cb22c0fdf8f800";
+
+  /**
+   * Derives the RFC 6381 AVC codec string from a hex-encoded avcC box payload, the same way a
+   * demuxer builds {@link Format#codecs} from the sample entry.
+   */
+  private static String avcCodecStringFromAvcCBox(String avcCBoxHex) {
+    byte[] box = new byte[avcCBoxHex.length() / 2];
+    for (int i = 0; i < box.length; i++) {
+      box[i] = (byte) Integer.parseInt(avcCBoxHex.substring(i * 2, i * 2 + 2), 16);
+    }
+    return String.format("avc1.%02x%02x%02x", box[1], box[2], box[3]);
+  }
+
+  @Test
+  public void selectTracksWithRealWorldBigBuckBunnyLadder() throws Exception {
+    // The codec strings below are not hand-written: they are derived inside this test from the
+    // avcC (AVCDecoderConfigurationRecord) boxes of real Big Buck Bunny files. The payloads were
+    // extracted with:
+    //   python3 -c "import struct; d=open(<file>,'rb').read(); i=d.find(b'avcC');
+    //   sz=struct.unpack('>I',d[i-4:i])[0]; print(d[i+4:i-4+sz].hex())"
+    // and can be re-extracted from the same files at any time.
+    // - ia_bbb.mp4: the original Big Buck Bunny movie
+    //   (https://archive.org/download/BigBuckBunny_328/BigBuckBunny_512kb.mp4, the file
+    //   referenced by GitHub ab2525/ia-more_animation via git-annex)
+    // - bbb_baseline.mp4: 12s transcode of ia_bbb.mp4:
+    //   ffmpeg -i ia_bbb.mp4 -t 12 -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p
+    // - bbb_high.mp4: 12s transcode of ia_bbb.mp4:
+    //   ffmpeg -i ia_bbb.mp4 -t 12 -c:v libx264 -profile:v high -level 4.0 -pix_fmt yuv420p
+    String originalCodecs = avcCodecStringFromAvcCBox(IA_BBB_AVCC_HEX);
+    String baselineCodecs = avcCodecStringFromAvcCBox(BBB_BASELINE_AVCC_HEX);
+    String highCodecs = avcCodecStringFromAvcCBox(BBB_HIGH_AVCC_HEX);
+    // The derived strings must match the known-good values for these files.
+    assertThat(originalCodecs).isEqualTo("avc1.42c00d"); // Constrained Baseline, level 1.3
+    assertThat(baselineCodecs).isEqualTo("avc1.42c01e"); // Constrained Baseline, level 3.0
+    assertThat(highCodecs).isEqualTo("avc1.640028"); // High, level 4.0
+    Format original = VIDEO_FORMAT.buildUpon().setCodecs(originalCodecs).build();
+    Format baseline30 = VIDEO_FORMAT.buildUpon().setCodecs(baselineCodecs).build();
+    Format high40 = VIDEO_FORMAT.buildUpon().setCodecs(highCodecs).build();
+
+    // Same AVC profile (Baseline) but different levels: must not share an adaptive selection.
+    TrackGroupArray trackGroups = singleTrackGroup(original, baseline30);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, original);
+
+    // Different AVC profiles (Baseline vs High): must not share an adaptive selection either.
+    trackGroups = singleTrackGroup(baseline30, high40);
+    result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, baseline30);
+
+    // The full three-track ladder must not be bundled into one adaptive selection, which is
+    // what the unpatched selector produces.
+    trackGroups = singleTrackGroup(original, baseline30, high40);
+    result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertThat(result.selections[0].length()).isLessThan(3);
+  }
+
+  @Test
+  public void selectTracksWithMultipleVideoTracksWithMissingAvcCodecStrings() throws Exception {
+    // Tracks without codec metadata are treated as compatible, preserving existing behavior.
+    Format firstFormat = VIDEO_FORMAT.buildUpon().setAverageBitrate(400000).build();
+    Format secondFormat = VIDEO_FORMAT.buildUpon().setAverageBitrate(800000).build();
+    TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+  }
+
+  @Test
   public void
       selectTracks_audioChannelCountConstraintsDisabledAndMultipleAudioTracksWithMixedChannelCounts()
           throws Exception {

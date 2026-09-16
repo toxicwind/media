@@ -89,6 +89,7 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
+import java.util.concurrent.ConcurrentHashMap;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
@@ -3771,6 +3772,68 @@ public class DefaultTrackSelector extends MappingTrackSelector
     public abstract boolean isCompatibleForAdaptationWith(T otherTrack);
   }
 
+  /**
+   * Cache of parsed AVC profile/level keys by codec string. Track selections are rebuilt repeatedly
+   * with the same codec strings, so parsing each string once keeps the adaptation gating overhead
+   * negligible.
+   */
+  private static final ConcurrentHashMap<String, Integer> avcProfileLevelKeyCache =
+      new ConcurrentHashMap<>();
+
+  private static final int AVC_PROFILE_LEVEL_KEY_CACHE_MAX_SIZE = 256;
+
+  /**
+   * Returns the packed AVC profile/level key for an {@code avc1.PPCCLL} or {@code avc3.PPCCLL}
+   * codecs string (RFC 6381), or null if the profile/level cannot be determined. PP is the
+   * hexadecimal profile_idc and LL is the hexadecimal level_idc; the packed key is {@code
+   * (profileIdc << 8) | levelIdc}.
+   *
+   * <p>This deliberately avoids {@link String#split}: the regex compilation per call dominated the
+   * cost of this check when it runs for every video track in a selection.
+   *
+   * <p>This also deliberately does not delegate to {@code
+   * CodecSpecificDataUtil.getCodecProfileAndLevel}: that API only recognizes {@code avc1}/{@code
+   * avc2} (not {@code avc3}), maps to MediaCodec profile/level constants instead of the raw
+   * profile_idc/level_idc pair this gate compares, returns null for device-unsupported codecs
+   * (which would silently disable the gate depending on the device), and logs on malformed input in
+   * the selection hot path.
+   */
+  static @Nullable Integer parseAvcProfileLevelKey(String codecs) {
+    Integer cachedKey = avcProfileLevelKeyCache.get(codecs);
+    if (cachedKey != null) {
+      return cachedKey;
+    }
+    Integer key = parseAvcProfileLevelKeyUncached(codecs);
+    if (key != null && avcProfileLevelKeyCache.size() < AVC_PROFILE_LEVEL_KEY_CACHE_MAX_SIZE) {
+      avcProfileLevelKeyCache.put(codecs, key);
+    }
+    return key;
+  }
+
+  private static @Nullable Integer parseAvcProfileLevelKeyUncached(String codecs) {
+    int dotIndex = codecs.indexOf('.');
+    // "avc1." is 5 chars; PPCCLL is 6 hex chars.
+    if (dotIndex != 4 || codecs.length() != 11) {
+      return null;
+    }
+    if (!codecs.startsWith("avc1") && !codecs.startsWith("avc3")) {
+      return null;
+    }
+    int profileIdc = parseHexByte(codecs, /* offset= */ 5);
+    int levelIdc = parseHexByte(codecs, /* offset= */ 9);
+    if (profileIdc == -1 || levelIdc == -1) {
+      return null;
+    }
+    return (profileIdc << 8) | levelIdc;
+  }
+
+  /** Parses two hex chars at {@code offset} as a byte, or returns -1 if either is not hex. */
+  private static int parseHexByte(String s, int offset) {
+    int hi = Character.digit(s.charAt(offset), /* radix= */ 16);
+    int lo = Character.digit(s.charAt(offset + 1), /* radix= */ 16);
+    return (hi == -1 || lo == -1) ? -1 : (hi << 4) | lo;
+  }
+
   private static final class VideoTrackInfo extends TrackInfo<VideoTrackInfo> {
 
     /**
@@ -3841,6 +3904,7 @@ public class DefaultTrackSelector extends MappingTrackSelector
     private final int codecPreferenceScore;
     private final boolean isHdr;
     @Nullable private final String resolvedMimeType;
+    @Nullable private final Integer avcProfileLevelKey;
 
     public VideoTrackInfo(
         int rendererIndex,
@@ -3936,6 +4000,7 @@ public class DefaultTrackSelector extends MappingTrackSelector
           RendererCapabilities.getHardwareAccelerationSupport(formatSupport)
               == RendererCapabilities.HARDWARE_ACCELERATION_SUPPORTED;
       this.resolvedMimeType = resolvedMimeType;
+      avcProfileLevelKey = getAvcProfileLevelKey(format);
       codecPreferenceScore = getVideoCodecPreferenceScore(resolvedMimeType);
       isHdr = usesPrimaryOrFallbackDecoder && ColorInfo.isTransferHdr(format.colorInfo);
       selectionEligibility = evaluateSelectionEligibility(formatSupport, requiredAdaptiveSupport);
@@ -3952,7 +4017,33 @@ public class DefaultTrackSelector extends MappingTrackSelector
               || Objects.equals(this.resolvedMimeType, otherTrack.resolvedMimeType))
           && (parameters.allowVideoMixedDecoderSupportAdaptiveness
               || (this.usesPrimaryOrFallbackDecoder == otherTrack.usesPrimaryOrFallbackDecoder
-                  && this.usesHardwareAcceleration == otherTrack.usesHardwareAcceleration));
+                  && this.usesHardwareAcceleration == otherTrack.usesHardwareAcceleration))
+          && areAvcCodecProfilesCompatibleForAdaptation(
+              this.avcProfileLevelKey, otherTrack.avcProfileLevelKey);
+    }
+
+    /**
+     * Returns the packed AVC profile/level key parsed from the {@code avc1.PPCCLL} codecs string
+     * (RFC 6381), or null if the format is not AVC or the profile/level cannot be determined.
+     */
+    @Nullable
+    private static Integer getAvcProfileLevelKey(Format format) {
+      if (!MimeTypes.VIDEO_H264.equals(format.sampleMimeType) || format.codecs == null) {
+        return null;
+      }
+      return parseAvcProfileLevelKey(format.codecs);
+    }
+
+    /**
+     * Returns whether two tracks may share an adaptive selection with respect to their AVC codec
+     * profiles. Tracks whose AVC profile/level cannot be determined are treated as compatible, so
+     * this only partitions selections where both tracks declare differing profiles or levels.
+     */
+    private static boolean areAvcCodecProfilesCompatibleForAdaptation(
+        @Nullable Integer avcProfileLevelKey, @Nullable Integer otherAvcProfileLevelKey) {
+      return avcProfileLevelKey == null
+          || otherAvcProfileLevelKey == null
+          || avcProfileLevelKey.equals(otherAvcProfileLevelKey);
     }
 
     private @SelectionEligibility int evaluateSelectionEligibility(
