@@ -1,3 +1,12 @@
+> **Branch [`dts/avc-profile-level-adaptation-gating`](https://github.com/toxicwind/media/tree/dts/avc-profile-level-adaptation-gating)**
+> — work in progress, not yet proposed upstream. This branch stops ExoPlayer's
+> `DefaultTrackSelector` from bundling mixed AVC profile/level ladders (e.g. the Big Buck Bunny
+> ladder) into a single adaptive selection: tracks whose `avc1`/`avc3` profile/level keys differ
+> are no longer considered compatible for adaptation. Implementation:
+> `DefaultTrackSelector.parseAvcProfileLevelKey` + `VideoTrackInfo.isCompatibleForAdaptationWith`;
+> tests in `DefaultTrackSelectorTest`, latency micro-benchmarks in
+> `DefaultTrackSelectorAvcBenchmarkTest`.
+
 # AndroidX Media
 
 AndroidX Media is a collection of libraries for implementing media use cases on
