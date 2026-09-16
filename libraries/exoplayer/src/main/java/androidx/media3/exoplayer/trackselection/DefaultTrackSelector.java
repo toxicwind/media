@@ -67,6 +67,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId;
 import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.upstream.BandwidthMeter;
+import androidx.media3.exoplayer.util.Pixel10FamilyDevice;
 import androidx.media3.exoplayer.util.SpatializerWrapper;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ComparisonChain;
@@ -89,7 +90,6 @@ import java.util.Locale;
 import java.util.Map;
 import java.util.Objects;
 import java.util.Set;
-import java.util.concurrent.ConcurrentHashMap;
 import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
 
 /**
@@ -3773,65 +3773,12 @@ public class DefaultTrackSelector extends MappingTrackSelector
   }
 
   /**
-   * Cache of parsed AVC profile/level keys by codec string. Track selections are rebuilt repeatedly
-   * with the same codec strings, so parsing each string once keeps the adaptation gating overhead
-   * negligible.
-   */
-  private static final ConcurrentHashMap<String, Integer> avcProfileLevelKeyCache =
-      new ConcurrentHashMap<>();
-
-  private static final int AVC_PROFILE_LEVEL_KEY_CACHE_MAX_SIZE = 256;
-
-  /**
-   * Returns the packed AVC profile/level key for an {@code avc1.PPCCLL} or {@code avc3.PPCCLL}
-   * codecs string (RFC 6381), or null if the profile/level cannot be determined. PP is the
-   * hexadecimal profile_idc and LL is the hexadecimal level_idc; the packed key is {@code
-   * (profileIdc << 8) | levelIdc}.
-   *
-   * <p>This deliberately avoids {@link String#split}: the regex compilation per call dominated the
-   * cost of this check when it runs for every video track in a selection.
-   *
-   * <p>This also deliberately does not delegate to {@code
-   * CodecSpecificDataUtil.getCodecProfileAndLevel}: that API only recognizes {@code avc1}/{@code
-   * avc2} (not {@code avc3}), maps to MediaCodec profile/level constants instead of the raw
-   * profile_idc/level_idc pair this gate compares, returns null for device-unsupported codecs
-   * (which would silently disable the gate depending on the device), and logs on malformed input in
-   * the selection hot path.
+   * Returns the packed AVC profile/level key for {@code codecs}, or null if the profile/level
+   * cannot be determined. Delegates to {@link Pixel10FamilyDevice#parseAvcProfileLevelKey(String)}
+   * so Gate A and Gate B share exactly one implementation (and one cache) of the RFC 6381 parse.
    */
   static @Nullable Integer parseAvcProfileLevelKey(String codecs) {
-    Integer cachedKey = avcProfileLevelKeyCache.get(codecs);
-    if (cachedKey != null) {
-      return cachedKey;
-    }
-    Integer key = parseAvcProfileLevelKeyUncached(codecs);
-    if (key != null && avcProfileLevelKeyCache.size() < AVC_PROFILE_LEVEL_KEY_CACHE_MAX_SIZE) {
-      avcProfileLevelKeyCache.put(codecs, key);
-    }
-    return key;
-  }
-
-  private static @Nullable Integer parseAvcProfileLevelKeyUncached(String codecs) {
-    int dotIndex = codecs.indexOf('.');
-    // "avc1." is 5 chars; PPCCLL is 6 hex chars.
-    if (dotIndex != 4 || codecs.length() != 11) {
-      return null;
-    }
-    if (!codecs.startsWith("avc1") && !codecs.startsWith("avc3")) {
-      return null;
-    }
-    int profileIdc = parseHexByte(codecs, /* offset= */ 5);
-    int levelIdc = parseHexByte(codecs, /* offset= */ 9);
-    if (profileIdc == -1 || levelIdc == -1) {
-      return null;
-    }
-    return (profileIdc << 8) | levelIdc;
-  }
-
-  /** Parses two hex chars at {@code offset} as a byte, or returns -1 if either is not hex. */
-  private static int parseHexByte(String s, int offset) {
-    int hi = Character.digit(s.charAt(offset), /* radix= */ 16);
-    int lo = Character.digit(s.charAt(offset + 1), /* radix= */ 16);
-    return (hi == -1 || lo == -1) ? -1 : (hi << 4) | lo;
+    return Pixel10FamilyDevice.parseAvcProfileLevelKey(codecs);
   }
 
   private static final class VideoTrackInfo extends TrackInfo<VideoTrackInfo> {
@@ -4019,7 +3966,8 @@ public class DefaultTrackSelector extends MappingTrackSelector
               || (this.usesPrimaryOrFallbackDecoder == otherTrack.usesPrimaryOrFallbackDecoder
                   && this.usesHardwareAcceleration == otherTrack.usesHardwareAcceleration))
           && areAvcCodecProfilesCompatibleForAdaptation(
-              this.avcProfileLevelKey, otherTrack.avcProfileLevelKey);
+              this.avcProfileLevelKey, otherTrack.avcProfileLevelKey)
+          && areAvcBitratesCompatibleForAdaptation(this, otherTrack);
     }
 
     /**
@@ -4044,6 +3992,31 @@ public class DefaultTrackSelector extends MappingTrackSelector
       return avcProfileLevelKey == null
           || otherAvcProfileLevelKey == null
           || avcProfileLevelKey.equals(otherAvcProfileLevelKey);
+    }
+
+    /**
+     * Gate B (issue #3185): on Pixel 10 family devices (Tensor G5) the hardware AVC decoder freezes
+     * on any bitrate switch, even between tracks with the same AVC profile/level. Declaring
+     * same-key tracks with differing bitrates incompatible forces a drain-and-reinitialize instead
+     * of seamless codec reuse. Off Pixel 10 this is a no-op (normal ABR). Unknown bitrates fail
+     * open, like unknown keys in Gate A.
+     */
+    private static boolean areAvcBitratesCompatibleForAdaptation(
+        VideoTrackInfo track, VideoTrackInfo otherTrack) {
+      if (!Pixel10FamilyDevice.isPixel10FamilyDevice()) {
+        return true;
+      }
+      Integer key = track.avcProfileLevelKey;
+      Integer otherKey = otherTrack.avcProfileLevelKey;
+      if (key == null || otherKey == null || !key.equals(otherKey)) {
+        // Gate A already rejects known-unequal keys globally; unknown keys fail open.
+        return true;
+      }
+      int bitrate = track.format.bitrate;
+      int otherBitrate = otherTrack.format.bitrate;
+      return bitrate == Format.NO_VALUE
+          || otherBitrate == Format.NO_VALUE
+          || bitrate == otherBitrate;
     }
 
     private @SelectionEligibility int evaluateSelectionEligibility(
