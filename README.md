@@ -1,11 +1,36 @@
-> **Branch [`dts/avc-profile-level-adaptation-gating`](https://github.com/toxicwind/media/tree/dts/avc-profile-level-adaptation-gating)**
-> — work in progress, not yet proposed upstream. This branch stops ExoPlayer's
-> `DefaultTrackSelector` from bundling mixed AVC profile/level ladders (e.g. the Big Buck Bunny
-> ladder) into a single adaptive selection: tracks whose `avc1`/`avc3` profile/level keys differ
-> are no longer considered compatible for adaptation. Implementation:
-> `DefaultTrackSelector.parseAvcProfileLevelKey` + `VideoTrackInfo.isCompatibleForAdaptationWith`;
-> tests in `DefaultTrackSelectorTest`, latency micro-benchmarks in
-> `DefaultTrackSelectorAvcBenchmarkTest`.
+> **Branch [`dts/avc-profile-level-adaptation-gating`](https://github.com/toxicwind/media/tree/dts/avc-profile-level-adaptation-gating)** — work in progress, not yet proposed upstream.
+
+## Why: gate adaptive selections on AVC profile/level
+
+### The problem
+
+ExoPlayer's `DefaultTrackSelector` builds adaptive selections by grouping tracks whose formats are "compatible for adaptation" — historically keyed on MIME-type equality plus a few capability signals, with no regard for the AVC profile/level carried in each track's `avc1`/`avc3` codec string. Real-world ladders are mixed: the Big Buck Bunny ladder, for example, spans renditions at different profiles and levels (e.g. `avc1.42c00d`-style Baseline renditions alongside `avc1.640028`-style High renditions).
+
+Switching between tracks of different AVC profiles or levels *inside one adaptive selection* forces a mid-stream decoder reconfiguration. Many hardware decoders cannot perform a seamless profile/level switch: the result is playback stalls, corrupted frames, a visible black flash, or a full decoder tear-down and re-instantiation at exactly the moment the player is trying to adapt smoothly. The selector was promising the renderer a compatible set; the set wasn't actually compatible.
+
+### What this branch does
+
+`DefaultTrackSelector` now parses the RFC 6381 codec string (`avc1.PPCCLL` / `avc3.PPCCLL`) into a packed key — `(profile_idc << 8) | level_idc` — and `VideoTrackInfo.isCompatibleForAdaptationWith` refuses to bundle tracks whose keys are both known and unequal. Mixed ladders still play; they now adapt *within* compatible profile/level families instead of across incompatible ones.
+
+### Design decisions
+
+- **Conservative by default.** Tracks whose profile/level cannot be determined (missing or malformed codec string, non-AVC content) stay compatible — the gate only partitions selections where *both* tracks declare *differing* profiles or levels. Streams that don't declare are unaffected.
+- **Codec string is the source of truth.** It is the only universally available signal; `sampleMimeType` does not carry profile/level.
+- **No regex in the hot path.** `parseAvcProfileLevelKey` is a manual hex parse backed by a bounded (256-entry) `ConcurrentHashMap` cache, because track selections are rebuilt repeatedly with the same codec strings. It deliberately does *not* reuse `CodecSpecificDataUtil.getCodecProfileAndLevel`: that API only recognizes `avc1`/`avc2` (not `avc3`), returns MediaCodec profile/level constants instead of the raw idc pair this gate compares, returns null for device-unsupported codecs (which would silently disable the gate depending on the device), and logs on malformed input in the selection hot path.
+- **Measured, not assumed.** Latency micro-benchmarks (`DefaultTrackSelectorAvcBenchmarkTest`): manual parse ~37–42ns vs legacy regex ~166–179ns (~4.5x faster); `selectTracks` end-to-end ~100–117µs.
+
+### Evidence
+
+- 132 functional tests + 3 benchmark tests green across 2 runs (exit 0), base release `8c6678b` (1.11.1).
+- Red baseline preserved: all 3 new behavioral tests fail on the unpatched base.
+- The Big Buck Bunny ladder test derives codec strings in-test from real `avcC` box payloads (embedded payloads, not full MP4s).
+- Full audit, PR description, patches, benchmark numbers, and the red-baseline notes are mirrored in the companion gist.
+
+### Status and limits
+
+- Work in progress, **not yet proposed upstream**. Base is release `8c6678b`; an upstream submission would need a rebase/port onto current `main`, plus upstream review of whether level-up adaptation should ever be allowed when the decoder supports it.
+- Keyed on the codec string only: wrong or missing codec strings fall back to previous behavior rather than blocking playback.
+- No PR is open from this branch; the branch stays push-ready only.
 
 # AndroidX Media
 
