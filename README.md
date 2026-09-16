@@ -30,6 +30,10 @@ The track selector was at fault. `DefaultTrackSelector` grouped tracks into adap
 
 - **Production-grade.** 132 functional tests + 3 benchmark tests green across 2 runs (exit 0); red baseline preserved (all 3 new behavioral tests fail unpatched); latency measured, not assumed.
 - **Not yet proposed upstream.** Base is release `8c6678b`; proposing it needs a rebase/port onto current `main`, plus upstream review of whether level-up adaptation should ever be allowed when the decoder supports it.
+- **Gate B (Pixel 10 family AVC workaround) implemented on this branch.**
+  27 targeted tests green across 2 runs; red baseline (3 new-wiring tests fail
+  unpatched) preserved in an isolated worktree; predicate benchmark
+  37–86 ns/op. Details in AUDIT.md.
 - Keyed on the codec string only: wrong or missing codec strings fall back to previous behavior rather than blocking playback.
 - No PR is open from this branch yet; the branch stays push-ready.
 
@@ -37,7 +41,7 @@ The track selector was at fault. `DefaultTrackSelector` grouped tracks into adap
 
 ## Perspective: the bug trap, the product question, and what this patch is not
 
-Added 2026-09-16, after re-reading the full issue #3185 thread (11 comments via
+Added 2026-09-16, after re-reading the full issue #3185 thread (12 comments via
 GitHub API, 2026-04-23 → 2026-08-17) and the reporter's follow-ups. This section
 does not change the code; it records the framing the patch is written against,
 so the next person doesn't fall into the same trap.
@@ -95,18 +99,32 @@ Aim the fix at the layer you can actually change; don't ask an open-source
 selector to compensate for a closed firmware state machine beyond what
 correctness already requires.
 
-### Gate B: proposed, audited, NOT implemented
+### Gate B: implemented (2026-09-16)
 
-A device-aware follow-up ("Gate B": Pixel 10-only stricter gating, matching the
-reporter's product preference) was specified in review notes — and the double
-audit below caught the spec gating the **wrong devices**: one draft listed
-`tokay` (Pixel 9, Tensor G4) and another listed `comet` (Pixel 9 Pro Fold),
-neither of which is a Pixel 10. The verified Tensor G5 / Pixel 10 set is
-`frankel` (Pixel 10), `blazer` (Pixel 10 Pro), `mustang` (Pixel 10 Pro XL),
-`rango` (Pixel 10 Pro Fold), `stallion` (Pixel 10a). Gate B stays unimplemented
-until the device list is confirmed and explicitly approved — and with the
-firmware fix already merged internally, the product question belongs to the
-exo-team proposal discussion, not to this correctness patch.
+The device-aware follow-up ("Gate B": Pixel 10-only stricter gating, matching
+the reporter's product preference) is now implemented on this branch. The
+double audit had caught the draft spec gating the **wrong devices** (one draft
+listed `tokay` = Pixel 9 / Tensor G4, another `comet` = Pixel 9 Pro Fold);
+the implementation uses the verified Tensor G5 / Pixel 10 set — `frankel`
+(Pixel 10), `blazer` (Pixel 10 Pro), `mustang` (Pixel 10 Pro XL), `rango`
+(Pixel 10 Pro Fold), `stallion` (Pixel 10a) — with `Build.DEVICE` matching plus
+model/product fallbacks, and the Pixel 9 family as explicit exclusions.
+
+Why Gate B exists alongside Gate A: the reporter is explicit that the freeze
+happens on **any** bitrate switch, including SD→SD with the same AVC
+profile/level — which Gate A deliberately leaves alone. On Pixel 10 family
+devices the selector now keeps same-profile/level tracks with differing known
+bitrates out of one adaptive selection, and `MediaCodecVideoRenderer` refuses
+codec reuse (`DISCARD_REASON_WORKAROUND` → drain-and-reinitialize) when such a
+switch still arrives. Identity is by device, not decoder component name: the
+thread names both `c2.android.avc.decoder` and `c2.google.avc.decoder`, so
+name gating is unreliable. No forced software decoding. Unknown codec
+strings/bitrates fail open, and off Pixel 10 the gate is a no-op — normal ABR
+everywhere else. The tradeoff is documented, not hidden: re-init trades a
+brief stall (possibly a black frame, as the reporter's rejected workaround
+showed) for the permanent freeze; and with the firmware fix merged internally
+(2026-08-17, future Pixel update), the extra re-inits become pure overhead on
+fixed devices. See AUDIT.md for the red/green evidence and benchmarks.
 
 AndroidX Media is a collection of libraries for implementing media use cases on
 Android, including local playback (via ExoPlayer), video editing (via

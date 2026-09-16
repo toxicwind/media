@@ -35,6 +35,72 @@ divergence, documented in the code):
   would silently disable the gate depending on the device;
 - it regex-splits and `Log.w`s on malformed input in the selection hot path.
 
+## Change (Gate B, 2026-09-16) — Pixel 10 family AVC decoder workaround
+
+Gate A stops mixed profile/level tracks from sharing one adaptive selection,
+but issue #3185's reporter is explicit that the freeze happens on **any**
+bitrate switch — SD to SD with the same AVC profile/level included. Gate B
+covers that remainder.
+
+- New `libraries/exoplayer/.../util/Pixel10FamilyDevice.java`:
+  - `isPixel10FamilyDevice()` matches `Build.DEVICE` case-insensitively
+    against `frankel` (Pixel 10), `blazer` (Pixel 10 Pro), `mustang`
+    (Pixel 10 Pro XL), `rango` (Pixel 10 Pro Fold), `stallion` (Pixel 10a),
+    with `Build.MODEL` ("Pixel 10" prefix) and `Build.PRODUCT` ("pixel 10"
+    contains) fallbacks for variants. Deliberately excludes the Pixel 9
+    family (`tokay`, `caiman`, `komodo`, `tegu`, `comet` — Tensor G4, not
+    affected per the issue thread).
+  - `shouldForceAvcCodecReinit(old, new)` returns true on Pixel 10 family
+    devices when both formats carry known AVC profile/level keys and the keys
+    are unequal, OR the keys are equal but both bitrates are known and differ.
+    Unknown keys / unknown bitrates fail open (false). No decoder-name
+    checks, no forced software decoding — the same decoder is reconfigured.
+  - Owns the AVC profile/level parser (`parseAvcProfileLevelKey`), moved
+    verbatim from `DefaultTrackSelector` so Gate A and Gate B share one
+    implementation and one bounded cache. `DefaultTrackSelector`'s
+    `parseAvcProfileLevelKey` is back to package-private and delegates;
+    behavior is byte-identical (Gate A constraint holds).
+- `DefaultTrackSelector.VideoTrackInfo.isCompatibleForAdaptationWith` now
+  also requires `areAvcBitratesCompatibleForAdaptation`: on Pixel 10 family
+  devices, same-key tracks with differing known bitrates are incompatible, so
+  the selector keeps switch-prone tracks out of one adaptive selection.
+  Off Pixel 10 this is a no-op (normal ABR); Gate A's known-unequal-key
+  behavior is unchanged globally.
+- `MediaCodecVideoRenderer.canReuseCodec` adds `DISCARD_REASON_WORKAROUND`
+  when the shared helper says re-init is needed, turning the evaluation into
+  `REUSE_RESULT_NO`. The existing machinery then drains and re-initializes
+  the codec (`drainAndReinitializeCodec` → EOS + drain if buffers were
+  received, else immediate re-init; `releaseCodec` + `maybeInitCodecOrBypass`).
+  The output surface is not explicitly cleared, so the last frame should stay
+  up during the brief stall — but issue evidence (the reporter's rejected
+  workaround A, 2026-05-22) shows black frames can still occur on this path.
+  The tradeoff is accepted: a brief stall/black frame instead of a permanent
+  freeze with audio continuing.
+
+Why device identity, not decoder component name: the issue thread names
+`c2.android.avc.decoder` (2026-05-14) and `c2.google.avc.decoder`
+(2026-07-22) for different failure reports, so component-name gating is
+unreliable. Device identity (`Build.DEVICE`) is the stable signal.
+
+Device-list provenance (source quality stated honestly):
+- Google engineer Douglas Anderson's LKML device-tree series (2025-11-11):
+  `frankel` = Pixel 10, `blazer` = Pixel 10 Pro, `mustang` = Pixel 10 Pro XL
+  (primary source).
+- Android Authority codename table: `rango` / RG5 = Pixel 10 Pro Fold,
+  `stallion` / STA5 = Pixel 10a; Pixel 9 family exclusions `tokay`, `caiman`,
+  `komodo`, `tegu`, `comet` (secondary press).
+- GSMA device listing: Pixel 10 Pro XL model `GUL82` (industry database).
+- TWRP device trees (`jsauce454`/`eychoong` `twrp_device_google_blazer`):
+  Tensor G5 platform `deepspace` (community source).
+- Android Authority leak relayed by blog-nouvelles-technologies.fr:
+  first-generation Chips&Media WAVE677DV replaces the Samsung MFC/BigWave
+  decoder stack on Tensor G5 (secondary/leak reporting — treated as
+  attributed, not independently verified).
+
+Protobuf search (2026-09-16): the only codec/device-relevant proto in the
+tree is `demos/session_service/src/main/proto/preferences.proto`; no
+codec/device configuration proto exists. Recorded, not blocking.
+
 ## Tests
 
 `DefaultTrackSelectorTest` — 5 new tests:
@@ -70,6 +136,38 @@ Big Buck Bunny provenance (verified downloads on this machine):
   `DefaultTrackSelectorAvcBenchmarkTest`: 3 tests, 0 failures; exit code 0.
   (`evidence/green-20260915/`)
 
+### Gate B red / green (2026-09-16)
+
+- RED: isolated worktree `/home/toxic/gateb-red-20260916` at pre-Gate-B
+  commit `d4cc9fec38` (production untouched) + the new Gate B tests and the
+  standalone `Pixel10FamilyDevice` (its parser inlined, byte-identical to
+  Gate A's, because `DefaultTrackSelector.parseAvcProfileLevelKey` is
+  package-private on the baseline and unreachable cross-package).
+  2026-09-16T15:10:20Z → 15:10:39Z: **27 tests, 3 failed**, all three
+  exercising the new wiring and nothing else:
+  1. `DefaultTrackSelectorTest.selectTracks_pixel10_sameAvcProfileLevelDifferentBitrates_selectsFixed`
+  2. `MediaCodecVideoRendererTest.canReuseCodec_pixel10_unequalAvcKeys_returnsNo`
+     (baseline `MediaCodecInfo.canReuseCodec` does not compare AVC
+     profile/level for H.264 — only Dolby Vision gets a profile check —
+     so the baseline reuses across `avc1.4D401F` → `avc1.64002A`)
+  3. `MediaCodecVideoRendererTest.canReuseCodec_pixel10_sameAvcKeyDifferentBitrate_returnsNo`
+  The other 24 (Gate A behavior locks, Pixel 9 / malformed / unknown-bitrate
+  fail-open cases, all 11 `Pixel10FamilyDeviceTest` pure-unit tests, the
+  predicate benchmark) pass on baseline as designed.
+- GREEN run 1: 2026-09-16T15:11:01Z → 15:11:15Z, `testDebugUnitTest` with the
+  same 27-test filter on branch `dts/avc-profile-level-adaptation-gating`
+  @ `2c893a4ce7`: **27 tests, 0 failures, 0 errors, 0 skipped**
+  (selector 11, renderer 4, device helper 11, benchmark 1).
+- GREEN run 2: 2026-09-16T15:11:36Z → 15:11:42Z, full benchmark class +
+  the same targeted filters @ `2c893a4ce7`: **30 tests, 0 failures,
+  0 errors, 0 skipped** (selector 11, renderer 4, device helper 11,
+  benchmark 4). Benchmark numbers below are from this run.
+- GREEN run 3 (benchmark-only re-run, second data point):
+  2026-09-16T15:11:58Z -> 15:12:03Z: **4 tests, 0 failures** -
+  selectTracks **108.1 us/selection**; legacy regex **75.0 ns/op**;
+  new manual (cold) **11.8 ns/op**; new cached (warm) **7.3 ns/op**;
+  Gate B predicate **85.8 ns/op**.
+
 ## Benchmarks (secondary patch)
 
 `DefaultTrackSelectorAvcBenchmarkTest` — timings print to stdout (in test logs).
@@ -86,13 +184,27 @@ Two green runs on awrawr-pc:
   run-to-run in the test JVM; the test asserts warm < legacy, which held in
   both runs (28.3x and 6.0x).
 - `selectTracks` over a 24-track mixed AVC ladder: 117.4 us then 100.2 us per
-  selection (budget asserted < 50 ms).
+  selection (budget asserted < 50 ms). Those were Gate A-era runs; re-measured
+  with Gate B in green run 2 (2026-09-16): **109.3 us/selection**.
+- Gate B predicate benchmark (`pixel10GateB_canReuseCodecPredicate_latencyWithinBudget`,
+  200,000 iterations, asserts < 1,000 ns/op): run 1 **37.4 ns/op**, run 2
+  **53.8 ns/op**.
+- Parser micro-benchmark re-measured with Gate B (green run 2, same JVM as the
+  other benchmarks): legacy regex split **108.5 ns/op**, new manual (cold)
+  **12.1 ns/op**, new cached (warm) **7.0 ns/op**; run 3: 75.0 / 11.8 / 7.3.
+  Faster than the Gate A-era numbers (166-179 / 37-42 / 6.3-27.7) — JVM
+  warmth variance; the stable claim remains "manual parse is several-x faster
+  than the regex split and the cached path is single-digit ns".
 
 ## Build / formatting
 
 - Repo has no Spotless config (verified: no `spotless` in any `*.gradle` /
-  `*.gradle.kts`); formatting done with Google Java Format 1.25.2 on all
-  touched files.
+  `*.gradle.kts`); formatting done with Google Java Format on all touched
+  files. Gate A used 1.25.2; for Gate B 1.25.2 fails on this machine's JDK 25
+  (`NoSuchMethodError` in `JavaInput.buildToks` — binary incompatibility, not
+  a config issue), so **1.27.0** was used
+  (`google-java-format-1.27.0-all-deps.jar` from Maven Central). Output for
+  these files is the standard google-java-format style either way.
 - Machine-tuned, user-level `~/.gradle/gradle.properties` on awrawr-pc
   (16 cores / 62 GB): `parallel=true`, `workers.max=16`, `caching=true`,
   `-Xmx12g`, `kotlin.parallel.tasks.in.project=true`. Pure performance knobs;
@@ -111,6 +223,11 @@ branch `dts/avc-profile-level-adaptation-gating`.
   `git rebase --onto main 8c6678b657 dts/avc-profile-level-adaptation-gating` —
   6/6 commits replayed, zero conflicts, new HEAD `c51ef982a0`, force-pushed
   (feature branch only; `main` untouched).
+- 2026-09-16: Gate B implemented on top (`d4cc9fec38` → `795dc611d7`
+  production: new `Pixel10FamilyDevice`, selector + renderer wiring, parser
+  moved verbatim into the helper with Gate A's package-private visibility
+  restored; → `2c893a4ce7` tests: 4 selector + 4 renderer + 11 device-helper
+  + 1 benchmark test). Pushed to origin, no PR.
 
 Patches: `evidence/patches/primary-avc-gating.patch`,
 `evidence/patches/secondary-avc-benchmark.patch`.
@@ -123,6 +240,20 @@ Patches: `evidence/patches/primary-avc-gating.patch`,
 - Cache is a static 256-entry map shared across selector instances.
 - Microbenchmarks inside Robolectric/JUnit are noisy; numbers above are ranges
   across runs, not single-shot claims.
+- Gate B limitations: device list is a hardcoded codename table (plus
+  model/product fallbacks) — new Pixel 10 variants with unknown codenames and
+  non-"Pixel 10" marketing names would miss the workaround (fail-open, same as
+  Gate A). The workaround re-initializes the same hardware decoder; on a
+  device where the firmware fix has shipped (Google: merged internally
+  2026-08-17, future Pixel update) the extra re-inits are pure overhead
+  (tens of ms per switch) with no benefit — no build-fingerprint gating was
+  added. `isPixel10FamilyDevice` is evaluated per call (no caching) because
+  tests fake `Build` fields; cost is a few string comparisons.
+- The `api.txt` metalava surface at repo root lists only a curated subset of
+  `androidx.media3.exoplayer.util` (DebugTextViewHelper, EventLogger); no
+  build task consumes it for this module, so the new `Pixel10FamilyDevice`
+  public class needs no `api.txt` entry. `DefaultTrackSelector`'s parser is
+  back to package-private — no public API expansion from Gate B.
 
 ## Double audit (2026-09-16) — patch vs. tree + spec vs. reality
 
@@ -164,7 +295,8 @@ sources (GitHub API for #3185 comments; web for device codenames).
 
 ### Pass 2 — spec/claim findings
 
-- Issue #3185 thread (via GitHub API, 11 comments, 2026-04-23 → 2026-08-17):
+- Issue #3185 thread (via GitHub API, 12 comments, 2026-04-23 → 2026-08-17;
+  raw JSON at `/home/toxic/gateb-20260916/comments/comments.json`, 24,996 bytes):
   reporter's Pixel 10 Pro XL GUL82 freeze on any bitrate switch; SW-decoder
   workaround; microkatz workarounds A (canReuseCodec override → black frame,
   rejected by reporter 2026-05-22) and B (disable `c2.android.avc.decoder` →
@@ -193,6 +325,10 @@ sources (GitHub API for #3185 comments; web for device codenames).
 
 Gate A: verified in-tree, spec-honest, tests present, fail-open where it can't
 read. Ship-shape as a correctness patch. It does not fix — and does not claim
-to fix — the Pixel 10 firmware defect. Gate B: not implemented, spec was wrong
-on device identity, held pending confirmed device list + explicit approval.
-This round's repo change is docs-only: the perspective section and this audit.
+to fix — the Pixel 10 firmware defect. Gate B: now implemented
+(`795dc611d7` + `2c893a4ce7`) with the corrected device list — the draft spec's
+`tokay`/`comet` error is fixed (they are exclusions, used as negative test
+cases), identity is by `Build.DEVICE` (not decoder component name, which the
+thread shows is unreliable), and neither gate forces software decoding. The
+mitigation trades a brief re-init stall (possibly a black frame) for the
+permanent freeze; it does not claim glitch-free switching.
