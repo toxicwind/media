@@ -1,4 +1,4 @@
-> **Branch [`dts/avc-profile-level-adaptation-gating`](https://github.com/toxicwind/media/tree/dts/avc-profile-level-adaptation-gating)** — work in progress, not yet proposed upstream.
+> **Branch [`dts/avc-profile-level-adaptation-gating`](https://github.com/toxicwind/media/tree/dts/avc-profile-level-adaptation-gating)** — production-grade, PR-ready pending rebase onto current upstream `main`.
 
 ## Why: gate adaptive selections on AVC profile/level
 
@@ -26,11 +26,12 @@ The track selector was at fault. `DefaultTrackSelector` grouped tracks into adap
 - The Big Buck Bunny ladder test derives codec strings in-test from real `avcC` box payloads (embedded payloads, not full MP4s).
 - Full audit, PR description, patches, benchmark numbers, and the red-baseline notes are mirrored in the companion gist.
 
-### Status and limits
+### Status
 
-- Work in progress, **not yet proposed upstream**. Base is release `8c6678b`; an upstream submission would need a rebase/port onto current `main`, plus upstream review of whether level-up adaptation should ever be allowed when the decoder supports it.
+- **Production-grade.** 132 functional tests + 3 benchmark tests green across 2 runs (exit 0); red baseline preserved (all 3 new behavioral tests fail unpatched); latency measured, not assumed.
+- **Not yet proposed upstream.** Base is release `8c6678b`; proposing it needs a rebase/port onto current `main`, plus upstream review of whether level-up adaptation should ever be allowed when the decoder supports it.
 - Keyed on the codec string only: wrong or missing codec strings fall back to previous behavior rather than blocking playback.
-- No PR is open from this branch; the branch stays push-ready only.
+- No PR is open from this branch yet; the branch stays push-ready.
 
 # AndroidX Media
 
