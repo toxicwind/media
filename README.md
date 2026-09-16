@@ -2,15 +2,15 @@
 
 ## Why: gate adaptive selections on AVC profile/level
 
-### The problem
+### The problem this fixes
 
-ExoPlayer's `DefaultTrackSelector` builds adaptive selections by grouping tracks whose formats are "compatible for adaptation" — historically keyed on MIME-type equality plus a few capability signals, with no regard for the AVC profile/level carried in each track's `avc1`/`avc3` codec string. Real-world ladders are mixed: the Big Buck Bunny ladder, for example, spans renditions at different profiles and levels (e.g. `avc1.42c00d`-style Baseline renditions alongside `avc1.640028`-style High renditions).
+Adaptive playback breaks when ExoPlayer switches mid-stream between AVC renditions encoded at different H.264 profiles or levels. The Big Buck Bunny ladder does exactly this: it mixes renditions like `avc1.42c00d` (Baseline) and `avc1.640028` (High) in a single ladder. Every switch between such renditions forces the decoder to reconfigure itself mid-stream for a new profile/level — and many Android hardware decoders cannot do that seamlessly. What the viewer gets is a stall, corrupted frames, or a black flash while the codec is torn down and rebuilt, at precisely the moment the player was trying to adapt smoothly.
 
-Switching between tracks of different AVC profiles or levels *inside one adaptive selection* forces a mid-stream decoder reconfiguration. Many hardware decoders cannot perform a seamless profile/level switch: the result is playback stalls, corrupted frames, a visible black flash, or a full decoder tear-down and re-instantiation at exactly the moment the player is trying to adapt smoothly. The selector was promising the renderer a compatible set; the set wasn't actually compatible.
+The track selector was at fault. `DefaultTrackSelector` grouped tracks into adaptive selections using a compatibility check keyed on MIME-type equality (`video/avc` == `video/avc`) plus a few capability signals — it never looked at the profile/level hiding inside each track's `avc1`/`avc3` codec string. So it happily handed the renderer a single "adaptive" set of mutually incompatible tracks, and ABR would pick switches the device couldn't execute.
 
 ### What this branch does
 
-`DefaultTrackSelector` now parses the RFC 6381 codec string (`avc1.PPCCLL` / `avc3.PPCCLL`) into a packed key — `(profile_idc << 8) | level_idc` — and `VideoTrackInfo.isCompatibleForAdaptationWith` refuses to bundle tracks whose keys are both known and unequal. Mixed ladders still play; they now adapt *within* compatible profile/level families instead of across incompatible ones.
+`DefaultTrackSelector` now parses the RFC 6381 codec string (`avc1.PPCCLL` / `avc3.PPCCLL`) into a packed key — `(profile_idc << 8) | level_idc` — and `VideoTrackInfo.isCompatibleForAdaptationWith` refuses to bundle tracks whose keys are both known and unequal. Mixed ladders still play; they now adapt *within* compatible profile/level families instead of across incompatible ones. The bad switches stop being offered in the first place.
 
 ### Design decisions
 
