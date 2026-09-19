@@ -17,6 +17,9 @@ package androidx.media3.transformer;
 
 import static android.os.Build.VERSION.SDK_INT;
 import static androidx.media3.common.C.TRACK_TYPE_VIDEO;
+import static androidx.media3.transformer.FrameAggregator.STRATEGY_EXPECT_NO_FRAMES;
+import static androidx.media3.transformer.FrameAggregator.STRATEGY_MATCH_FRAME_AT_OR_AFTER_TARGET;
+import static androidx.media3.transformer.FrameAggregator.STRATEGY_MATCH_FRAME_CLOSEST_TO_TARGET;
 import static androidx.media3.transformer.TransformerUtil.END_OF_STREAM_ASYNC_FRAME;
 import static com.google.common.base.Preconditions.checkNotNull;
 import static com.google.common.base.Preconditions.checkState;
@@ -35,6 +38,7 @@ import androidx.media3.common.MimeTypes;
 import androidx.media3.common.VideoFrameProcessingException;
 import androidx.media3.common.VideoFrameProcessor;
 import androidx.media3.common.util.Consumer;
+import androidx.media3.common.util.HandlerExecutor;
 import androidx.media3.common.util.HandlerWrapper;
 import androidx.media3.common.util.Util;
 import androidx.media3.common.video.AsyncFrame;
@@ -47,6 +51,7 @@ import androidx.media3.effect.DefaultGlObjectsProvider;
 import androidx.media3.effect.HardwareBufferFrame;
 import androidx.media3.effect.HardwareBufferJniWrapper;
 import androidx.media3.transformer.Codec.EncoderFactory;
+import androidx.media3.transformer.FrameAggregator.AggregationStrategy;
 import com.google.common.collect.ImmutableList;
 import java.util.ArrayDeque;
 import java.util.List;
@@ -137,12 +142,13 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
               .build();
     }
 
+    Executor playbackExecutor = new HandlerExecutor(playbackHandler, componentListener);
     if (SDK_INT >= 33) {
       frameWriter =
           new EncoderFrameWriter(
               strictEncoderFactory,
               componentListener,
-              playbackHandler::post,
+              playbackExecutor,
               playbackHandler,
               logSessionId);
     } else {
@@ -152,7 +158,7 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
               context,
               strictEncoderFactory,
               componentListener,
-              playbackHandler::post,
+              playbackExecutor,
               new DefaultGlObjectsProvider(),
               listeningDecorator(Util.newSingleThreadExecutor("GlEncoderFrameWriter::Thread")),
               hardwareBufferJniWrapper,
@@ -206,10 +212,20 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
               hardwareBufferJniWrapper);
       sampleConsumerBuilder.add(sampleConsumer);
       // TODO: b/496585841 - Handle single asset items with TRACK_TYPE_NONE.
-      // Ensure the FrameAggregator ignores audio only sequences.
-      boolean shouldAggregateSequence =
+      boolean sequenceContainsVideo =
           composition.sequences.get(sequenceIndex).trackTypes.contains(TRACK_TYPE_VIDEO);
-      frameAggregator.registerSequence(sequenceIndex, shouldAggregateSequence);
+      @AggregationStrategy int aggregationStrategy;
+      if (!sequenceContainsVideo) {
+        // Audio only sequences never produce video frames.
+        aggregationStrategy = STRATEGY_EXPECT_NO_FRAMES;
+      } else if (HardwareBufferFrameReader.CAPACITY >= 3) {
+        // Retaining the previous frame in FrameAggregator requires reader capacity >= 3 since
+        // InFlightFrameManager also holds a frame in flight downstream.
+        aggregationStrategy = STRATEGY_MATCH_FRAME_CLOSEST_TO_TARGET;
+      } else {
+        aggregationStrategy = STRATEGY_MATCH_FRAME_AT_OR_AFTER_TARGET;
+      }
+      frameAggregator.registerSequence(sequenceIndex, aggregationStrategy);
     }
     sampleConsumers = sampleConsumerBuilder.build();
   }
@@ -317,7 +333,8 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
   private final class ComponentListener
       implements GlEncoderFrameWriter.Listener,
           EncoderFrameWriter.Listener,
-          FrameProcessor.Listener {
+          FrameProcessor.Listener,
+          HandlerExecutor.Listener {
 
     @Override
     public Format onConfigure(Format requestedFormat) {
@@ -363,11 +380,6 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       finalFramePresentationTimeUs = C.TIME_UNSET;
     }
 
-    @Override
-    public void onError(VideoFrameProcessingException e) {
-      errorConsumer.accept(ExportException.createForVideoFrameProcessingException(e));
-    }
-
     // FrameProcessor.Listener methods
 
     @Override
@@ -378,6 +390,18 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
     @Override
     public void onFrameProcessed(Frame frame, @Nullable SyncFenceWrapper releaseFence) {
       inFlightFrameManager.onFrameProcessed(frame, releaseFence);
+    }
+
+    @Override
+    public void onError(VideoFrameProcessingException e) {
+      errorConsumer.accept(ExportException.createForVideoFrameProcessingException(e));
+    }
+
+    // HandlerExecutor.Listener methods
+
+    @Override
+    public void onError(RuntimeException e) {
+      onError(VideoFrameProcessingException.from(e));
     }
   }
 
@@ -425,28 +449,6 @@ import org.checkerframework.checker.nullness.qual.MonotonicNonNull;
       return DEFAULT_OUTPUT_MIME_TYPE;
     } else {
       return inputSampleMimeType;
-    }
-  }
-
-  private static final class HandlerExecutor implements Executor {
-    private final HandlerWrapper handler;
-    private final ComponentListener componentListener;
-
-    private HandlerExecutor(HandlerWrapper handler, ComponentListener componentListener) {
-      this.handler = handler;
-      this.componentListener = componentListener;
-    }
-
-    @Override
-    public void execute(Runnable command) {
-      handler.post(
-          () -> {
-            try {
-              command.run();
-            } catch (RuntimeException e) {
-              componentListener.onError(VideoFrameProcessingException.from(e));
-            }
-          });
     }
   }
 }

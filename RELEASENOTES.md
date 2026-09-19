@@ -31,12 +31,27 @@
     *   Fix an issue where Player.getCurrentPosition() could return stale values
         (updating only a few times per second) when dynamic scheduling is
         enabled ([#3286](https://github.com/androidx/media/issues/3286)).
+    *   Fix an issue where an unexpected decrease or reset in the `AudioTrack`
+        playback head position could be incorrectly treated as an integer
+        overflow, causing playback to stall in buffering
+        ([#3407](https://github.com/androidx/media/issues/3407)).
     *   Remove experimental
         `DefaultMediaCodecAdapterFactory.setAsyncCryptoSynchronizationEnabled(boolean)`.
+    *   Avoid unnecessary renderer re-enables and glitches when returning from
+        interstitials/ads into content clipped at the end
+        ([#3371](https://github.com/androidx/media/issues/3371)).
+    *   Fix an issue where a renderer error on an upcoming playlist item could
+        prematurely interrupt current playback when
+        `Flags.FLAG_PER_STREAM_MEDIA_PROGRESSION` is enabled.
 *   CompositionPlayer:
     *   Support configuring the frame rate of video frame aggregation via
         `Composition.Builder.setVideoFrameAggregationParameters` for playback
         workflows.
+    *   Fix frame drops in multi-sequence compositions caused by timestamp
+        quantization or rounding mismatches, by selecting the frame with the
+        closest timestamp during frame aggregation. This is enabled from API 29
+        only, as it requires holding one additional frame in flight per video
+        sequence.
 *   Decoder extensions (FFmpeg, VP9, AV1, etc.):
 *   Transformer:
     *   Fix a segmentation fault during release by introducing
@@ -46,6 +61,11 @@
     *   Support configuring the frame rate of video frame aggregation via
         `Composition.Builder.setVideoFrameAggregationParameters` for export
         workflows.
+    *   Fix frame drops in multi-sequence compositions caused by timestamp
+        quantization or rounding mismatches, by selecting the frame with the
+        closest timestamp during frame aggregation. This is enabled from API 29
+        only, as it requires holding one additional frame in flight per video
+        sequence.
 *   Track Selection:
     *   Fix an issue where an SDR track was incorrectly preferred over a
         supported Dolby Vision track on some devices
@@ -142,6 +162,8 @@
         attributes ([#3315](https://github.com/androidx/media/issues/3315)).
     *   Support parsing `<ProducerReferenceTime>` in `DashManifestParser` and
         expose it in `AdaptationSet.producerReferenceTimes`.
+    *   Add support for DASH Content Steering
+        ([#1689](https://github.com/androidx/media/issues/1689)).
 *   Smooth Streaming extension:
 *   RTSP extension:
     *   Fix an `IllegalStateException` crash that occurred when processing
@@ -153,6 +175,8 @@
         track reselection, session teardown, or uri redirection.
     *   Fix issue where seeking again prior to playback restart could cause an
         `IllegalStateException` crash.
+    *   Fix issue where seeking backward while a seek is already pending could
+        cause audio dropout and video playback freeze.
 *   Decoder extensions (FFmpeg, VP9, AV1, etc.):
 *   MIDI extension:
 *   Leanback extension:

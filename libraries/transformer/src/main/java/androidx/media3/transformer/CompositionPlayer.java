@@ -24,6 +24,9 @@ import static androidx.media3.effect.DebugTraceUtil.EVENT_SEEK_TO;
 import static androidx.media3.effect.DebugTraceUtil.EVENT_SET_COMPOSITION;
 import static androidx.media3.effect.DebugTraceUtil.EVENT_SET_VIDEO_OUTPUT;
 import static androidx.media3.exoplayer.video.PlaybackVideoGraphWrapper.LATE_US_TO_DROP_INPUT_FRAME;
+import static androidx.media3.transformer.FrameAggregator.STRATEGY_EXPECT_NO_FRAMES;
+import static androidx.media3.transformer.FrameAggregator.STRATEGY_MATCH_FRAME_AT_OR_AFTER_TARGET;
+import static androidx.media3.transformer.FrameAggregator.STRATEGY_MATCH_FRAME_CLOSEST_TO_TARGET;
 import static androidx.media3.transformer.TransformerUtil.containsSpeedChangingEffects;
 import static com.google.common.base.Preconditions.checkArgument;
 import static com.google.common.base.Preconditions.checkNotNull;
@@ -73,6 +76,7 @@ import androidx.media3.common.util.Clock;
 import androidx.media3.common.util.ConditionVariable;
 import androidx.media3.common.util.ExperimentalApi;
 import androidx.media3.common.util.GlUtil;
+import androidx.media3.common.util.HandlerExecutor;
 import androidx.media3.common.util.HandlerWrapper;
 import androidx.media3.common.util.Log;
 import androidx.media3.common.util.NullableType;
@@ -121,6 +125,7 @@ import androidx.media3.exoplayer.video.VideoSink;
 import androidx.media3.extractor.DefaultExtractorsFactory;
 import androidx.media3.extractor.amr.AmrExtractor;
 import androidx.media3.extractor.ts.AdtsExtractor;
+import androidx.media3.transformer.FrameAggregator.AggregationStrategy;
 import com.google.common.base.Supplier;
 import com.google.common.base.Suppliers;
 import com.google.common.collect.ImmutableList;
@@ -1670,8 +1675,18 @@ public final class CompositionPlayer extends SimpleBasePlayer {
               checkNotNull(videoPacketReleaseControl),
               hardwareBufferFrameReaderSupplier,
               lateThresholdToDropInputUs);
-      // Ensure the FrameAggregator ignores audio only sequences.
-      checkNotNull(currentFrameAggregator).registerSequence(sequenceIndex, sequenceContainsVideo);
+      @AggregationStrategy int aggregationStrategy;
+      if (!sequenceContainsVideo) {
+        // Audio only sequences never produce video frames.
+        aggregationStrategy = STRATEGY_EXPECT_NO_FRAMES;
+      } else if (HardwareBufferFrameReader.CAPACITY >= 3) {
+        // Retaining the previous frame in FrameAggregator requires reader capacity >= 3 since
+        // CompositionVideoPacketReleaseControl also retains a frame downstream.
+        aggregationStrategy = STRATEGY_MATCH_FRAME_CLOSEST_TO_TARGET;
+      } else {
+        aggregationStrategy = STRATEGY_MATCH_FRAME_AT_OR_AFTER_TARGET;
+      }
+      checkNotNull(currentFrameAggregator).registerSequence(sequenceIndex, aggregationStrategy);
     } else {
       VideoSink inputSink = checkNotNull(playbackVideoGraphWrapper).getSink(sequenceIndex);
       renderersFactory =
@@ -2427,7 +2442,8 @@ public final class CompositionPlayer extends SimpleBasePlayer {
           PlaybackVideoGraphWrapper.Listener,
           CompositionVideoPacketReleaseControl.Listener,
           SurfaceHolderFrameWriter.Listener,
-          FrameProcessor.Listener {
+          FrameProcessor.Listener,
+          HandlerExecutor.Listener {
 
     // AudioFocusManager.PlayerControl methods. Called on the application thread.
 
@@ -2553,18 +2569,6 @@ public final class CompositionPlayer extends SimpleBasePlayer {
       }
     }
 
-    @Override
-    public void onError(VideoFrameProcessingException videoFrameProcessingException) {
-      // The error will also be surfaced from the underlying ExoPlayer instance via
-      // PlayerListener.onPlayerError, and it will arrive to the composition player twice.
-      applicationHandler.post(
-          () ->
-              maybeUpdatePlaybackError(
-                  "Error processing video frames",
-                  videoFrameProcessingException,
-                  PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED));
-    }
-
     // FrameProcessor.Listener methods
 
     @Override
@@ -2578,27 +2582,24 @@ public final class CompositionPlayer extends SimpleBasePlayer {
         videoPacketReleaseControl.onFrameProcessed(frame, onCompleteFence);
       }
     }
-  }
-
-  private static final class HandlerExecutor implements Executor {
-    private final HandlerWrapper handler;
-    private final InternalListener internalListener;
-
-    private HandlerExecutor(HandlerWrapper handler, InternalListener internalListener) {
-      this.handler = handler;
-      this.internalListener = internalListener;
-    }
 
     @Override
-    public void execute(Runnable command) {
-      handler.post(
-          () -> {
-            try {
-              command.run();
-            } catch (RuntimeException e) {
-              internalListener.onError(e);
-            }
-          });
+    public void onError(VideoFrameProcessingException videoFrameProcessingException) {
+      // The error will also be surfaced from the underlying ExoPlayer instance via
+      // PlayerListener.onPlayerError, and it will arrive to the composition player twice.
+      applicationHandler.post(
+          () ->
+              maybeUpdatePlaybackError(
+                  "Error processing video frames",
+                  videoFrameProcessingException,
+                  PlaybackException.ERROR_CODE_VIDEO_FRAME_PROCESSING_FAILED));
+    }
+
+    // HandlerExecutor.Listener methods
+
+    @Override
+    public void onError(RuntimeException e) {
+      onError(VideoFrameProcessingException.from(e));
     }
   }
 }
