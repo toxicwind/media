@@ -1,0 +1,387 @@
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by net.rubygrapefruit.platform.internal.NativeLibraryLoader in an unnamed module (file:/home/toxic/.gradle/wrapper/dists/gradle-9.6.1-all/4xnwe4ed5w7qqynisxnnvegss/gradle-9.6.1/lib/native-platform-0.22-milestone-29.jar)
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+> Task :build-logic-settings:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :build-logic-settings:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :build-logic-settings:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :build-logic-settings:compilePluginsBlocks UP-TO-DATE
+> Task :build-logic-settings:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :build-logic-settings:generateScriptPluginAdapters UP-TO-DATE
+> Task :build-logic-settings:compileKotlin UP-TO-DATE
+> Task :build-logic-settings:compileJava NO-SOURCE
+> Task :build-logic-settings:pluginDescriptors UP-TO-DATE
+> Task :build-logic-settings:processResources UP-TO-DATE
+> Task :build-logic-settings:classes UP-TO-DATE
+> Task :build-logic-settings:jar UP-TO-DATE
+> Task :buildSrc:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :buildSrc:compileKotlin NO-SOURCE
+> Task :buildSrc:compileJava NO-SOURCE
+> Task :buildSrc:compileGroovy NO-SOURCE
+> Task :buildSrc:pluginDescriptors UP-TO-DATE
+> Task :buildSrc:processResources NO-SOURCE
+> Task :buildSrc:classes UP-TO-DATE
+> Task :buildSrc:jar UP-TO-DATE
+> Task :build-logic:checkKotlinGradlePluginConfigurationErrors SKIPPED
+> Task :build-logic:generateExternalPluginSpecBuilders UP-TO-DATE
+> Task :build-logic:extractPrecompiledScriptPluginPlugins UP-TO-DATE
+> Task :build-logic:compilePluginsBlocks UP-TO-DATE
+> Task :build-logic:generatePrecompiledScriptPluginAccessors UP-TO-DATE
+> Task :build-logic:generateScriptPluginAdapters UP-TO-DATE
+> Task :build-logic:compileKotlin UP-TO-DATE
+> Task :build-logic:compileJava NO-SOURCE
+> Task :build-logic:pluginDescriptors UP-TO-DATE
+> Task :build-logic:processResources UP-TO-DATE
+> Task :build-logic:classes UP-TO-DATE
+> Task :build-logic:jar UP-TO-DATE
+
+> Configure project :test-proguard
+WARNING: BuildType 'debug' is both debuggable and has 'isMinifyEnabled' set to true.
+All code optimizations and obfuscation are disabled for debuggable builds.
+
+> Task :lib-exoplayer:preBuild UP-TO-DATE
+> Task :lib-decoder:preBuild UP-TO-DATE
+> Task :lib-extractor:preBuild UP-TO-DATE
+> Task :lib-database:preBuild UP-TO-DATE
+> Task :test-utils:preBuild UP-TO-DATE
+> Task :lib-transformer:preBuild UP-TO-DATE
+> Task :test-utils-robolectric:preBuild UP-TO-DATE
+> Task :lib-common:preBuild UP-TO-DATE
+> Task :lib-container:preBuild UP-TO-DATE
+> Task :lib-effect:preBuild UP-TO-DATE
+> Task :lib-inspector:preBuild UP-TO-DATE
+> Task :lib-datasource:preBuild UP-TO-DATE
+> Task :lib-muxer:preBuild UP-TO-DATE
+> Task :lib-extractor:preDebugBuild UP-TO-DATE
+> Task :lib-inspector:preDebugBuild UP-TO-DATE
+> Task :lib-transformer:preDebugBuild UP-TO-DATE
+> Task :lib-datasource:preDebugBuild UP-TO-DATE
+> Task :lib-decoder:preDebugBuild UP-TO-DATE
+> Task :test-utils-robolectric:preDebugBuild UP-TO-DATE
+> Task :lib-exoplayer:preDebugBuild UP-TO-DATE
+> Task :lib-common:preDebugBuild UP-TO-DATE
+> Task :test-utils:preDebugBuild UP-TO-DATE
+> Task :lib-database:preDebugBuild UP-TO-DATE
+> Task :lib-container:preDebugBuild UP-TO-DATE
+> Task :lib-effect:preDebugBuild UP-TO-DATE
+> Task :lib-muxer:preDebugBuild UP-TO-DATE
+> Task :lib-decoder:generateDebugResources UP-TO-DATE
+> Task :lib-transformer:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-inspector:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-common:generateDebugResources UP-TO-DATE
+> Task :lib-extractor:generateDebugResources UP-TO-DATE
+> Task :lib-datasource:generateDebugResources UP-TO-DATE
+> Task :lib-database:generateDebugResources UP-TO-DATE
+> Task :lib-exoplayer:generateDebugResources UP-TO-DATE
+> Task :test-utils-robolectric:writeDebugAarMetadata UP-TO-DATE
+> Task :test-utils:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-container:generateDebugResources UP-TO-DATE
+> Task :lib-effect:generateDebugResources UP-TO-DATE
+> Task :lib-decoder:packageDebugResources UP-TO-DATE
+> Task :lib-muxer:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-transformer:generateDebugResources UP-TO-DATE
+> Task :lib-inspector:generateDebugResources UP-TO-DATE
+> Task :lib-datasource:packageDebugResources UP-TO-DATE
+> Task :lib-database:packageDebugResources UP-TO-DATE
+> Task :lib-common:packageDebugResources UP-TO-DATE
+> Task :lib-extractor:packageDebugResources UP-TO-DATE
+> Task :test-utils:generateDebugResources UP-TO-DATE
+> Task :test-utils-robolectric:generateDebugResources UP-TO-DATE
+> Task :lib-effect:packageDebugResources UP-TO-DATE
+> Task :lib-exoplayer:packageDebugResources UP-TO-DATE
+> Task :lib-container:packageDebugResources UP-TO-DATE
+> Task :lib-inspector:packageDebugResources UP-TO-DATE
+> Task :lib-effect:processDebugNavigationResources UP-TO-DATE
+> Task :lib-datasource:processDebugNavigationResources UP-TO-DATE
+> Task :lib-transformer:packageDebugResources UP-TO-DATE
+> Task :lib-common:processDebugNavigationResources UP-TO-DATE
+> Task :lib-muxer:generateDebugResources UP-TO-DATE
+> Task :lib-transformer:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-decoder:processDebugNavigationResources UP-TO-DATE
+> Task :lib-database:processDebugNavigationResources UP-TO-DATE
+> Task :lib-extractor:processDebugNavigationResources UP-TO-DATE
+> Task :lib-container:processDebugNavigationResources UP-TO-DATE
+> Task :lib-exoplayer:processDebugNavigationResources UP-TO-DATE
+> Task :lib-inspector:extractDeepLinksDebug UP-TO-DATE
+> Task :test-utils-robolectric:packageDebugResources UP-TO-DATE
+> Task :test-utils:packageDebugResources UP-TO-DATE
+> Task :lib-muxer:packageDebugResources UP-TO-DATE
+> Task :lib-decoder:parseDebugLocalResources UP-TO-DATE
+> Task :lib-effect:parseDebugLocalResources UP-TO-DATE
+> Task :lib-container:parseDebugLocalResources UP-TO-DATE
+> Task :lib-datasource:parseDebugLocalResources UP-TO-DATE
+> Task :lib-database:parseDebugLocalResources UP-TO-DATE
+> Task :lib-common:parseDebugLocalResources UP-TO-DATE
+> Task :lib-exoplayer:parseDebugLocalResources UP-TO-DATE
+> Task :test-utils-robolectric:extractDeepLinksDebug UP-TO-DATE
+> Task :test-utils:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-transformer:processDebugManifest UP-TO-DATE
+> Task :lib-extractor:parseDebugLocalResources UP-TO-DATE
+> Task :lib-inspector:processDebugManifest UP-TO-DATE
+> Task :lib-muxer:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-effect:generateDebugRFile UP-TO-DATE
+> Task :lib-datasource:generateDebugRFile UP-TO-DATE
+> Task :lib-common:generateDebugRFile UP-TO-DATE
+> Task :lib-decoder:generateDebugRFile UP-TO-DATE
+> Task :lib-container:generateDebugRFile UP-TO-DATE
+> Task :lib-database:generateDebugRFile UP-TO-DATE
+> Task :lib-exoplayer:generateDebugRFile UP-TO-DATE
+> Task :lib-muxer:processDebugManifest UP-TO-DATE
+> Task :lib-decoder:javaPreCompileDebug UP-TO-DATE
+> Task :lib-inspector:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-effect:javaPreCompileDebug UP-TO-DATE
+> Task :lib-extractor:generateDebugRFile UP-TO-DATE
+> Task :test-utils-robolectric:processDebugManifest UP-TO-DATE
+> Task :test-utils:processDebugManifest UP-TO-DATE
+> Task :lib-transformer:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-datasource:javaPreCompileDebug UP-TO-DATE
+> Task :lib-inspector:processDebugNavigationResources UP-TO-DATE
+> Task :lib-database:javaPreCompileDebug UP-TO-DATE
+> Task :test-utils:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-muxer:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-effect:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-database:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-container:javaPreCompileDebug UP-TO-DATE
+> Task :lib-datasource:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-decoder:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-muxer:processDebugNavigationResources UP-TO-DATE
+> Task :test-utils:processDebugNavigationResources UP-TO-DATE
+> Task :test-utils-robolectric:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-exoplayer:javaPreCompileDebug UP-TO-DATE
+> Task :lib-database:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-extractor:javaPreCompileDebug UP-TO-DATE
+> Task :lib-transformer:processDebugNavigationResources UP-TO-DATE
+> Task :lib-inspector:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-datasource:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-muxer:compileDebugLibraryResources UP-TO-DATE
+> Task :test-utils-robolectric:processDebugNavigationResources UP-TO-DATE
+> Task :lib-database:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-extractor:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-container:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-effect:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-datasource:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-exoplayer:preDebugUnitTestBuild UP-TO-DATE
+> Task :test-utils:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-decoder:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-database:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-muxer:parseDebugLocalResources UP-TO-DATE
+> Task :lib-inspector:parseDebugLocalResources UP-TO-DATE
+> Task :lib-effect:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-datasource:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-transformer:compileDebugLibraryResources UP-TO-DATE
+> Task :test-utils-robolectric:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-container:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-effect:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-exoplayer:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-database:processDebugManifest UP-TO-DATE
+> Task :lib-common:compileDebugKotlin NO-SOURCE
+> Task :test-utils:parseDebugLocalResources UP-TO-DATE
+> Task :lib-datasource:processDebugManifest UP-TO-DATE
+> Task :lib-database:generateDebugAssets UP-TO-DATE
+> Task :lib-extractor:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-decoder:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-transformer:parseDebugLocalResources UP-TO-DATE
+> Task :lib-effect:processDebugManifest UP-TO-DATE
+> Task :lib-muxer:generateDebugRFile UP-TO-DATE
+> Task :lib-inspector:generateDebugRFile UP-TO-DATE
+> Task :lib-database:mergeDebugAssets UP-TO-DATE
+> Task :lib-container:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-datasource:generateDebugAssets UP-TO-DATE
+> Task :lib-extractor:processDebugManifest UP-TO-DATE
+> Task :test-utils-robolectric:parseDebugLocalResources UP-TO-DATE
+> Task :lib-common:javaPreCompileDebug UP-TO-DATE
+> Task :test-utils:generateDebugRFile UP-TO-DATE
+> Task :lib-inspector:javaPreCompileDebug UP-TO-DATE
+> Task :lib-exoplayer:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-decoder:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-effect:generateDebugAssets UP-TO-DATE
+> Task :lib-muxer:javaPreCompileDebug UP-TO-DATE
+> Task :lib-extractor:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-container:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-datasource:mergeDebugAssets UP-TO-DATE
+> Task :test-utils-robolectric:generateDebugRFile UP-TO-DATE
+> Task :lib-transformer:generateDebugRFile UP-TO-DATE
+> Task :lib-effect:mergeDebugAssets UP-TO-DATE
+> Task :lib-inspector:generateDebugAssets UP-TO-DATE
+> Task :lib-muxer:generateDebugAssets UP-TO-DATE
+> Task :test-utils-robolectric:javaPreCompileDebug UP-TO-DATE
+> Task :test-utils:javaPreCompileDebug UP-TO-DATE
+> Task :lib-decoder:processDebugManifest UP-TO-DATE
+> Task :lib-exoplayer:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-container:processDebugManifest UP-TO-DATE
+> Task :lib-container:generateDebugAssets UP-TO-DATE
+> Task :lib-muxer:mergeDebugAssets UP-TO-DATE
+> Task :lib-extractor:compileDebugLibraryResources UP-TO-DATE
+> Task :test-utils:generateDebugAssets UP-TO-DATE
+> Task :lib-extractor:generateDebugAssets UP-TO-DATE
+> Task :lib-exoplayer:mapDebugUnitTestSourceSetPaths UP-TO-DATE
+> Task :lib-inspector:mergeDebugAssets UP-TO-DATE
+> Task :test-utils-robolectric:generateDebugAssets UP-TO-DATE
+> Task :lib-transformer:javaPreCompileDebug UP-TO-DATE
+> Task :lib-decoder:generateDebugAssets UP-TO-DATE
+> Task :lib-transformer:generateDebugAssets UP-TO-DATE
+> Task :test-utils-robolectric:mergeDebugAssets UP-TO-DATE
+> Task :lib-extractor:mergeDebugAssets UP-TO-DATE
+> Task :test-utils:mergeDebugAssets UP-TO-DATE
+> Task :lib-exoplayer:generateDebugUnitTestResources UP-TO-DATE
+> Task :lib-container:mergeDebugAssets UP-TO-DATE
+> Task :lib-transformer:mergeDebugAssets UP-TO-DATE
+> Task :lib-decoder:mergeDebugAssets UP-TO-DATE
+> Task :lib-common:compileDebugJavaWithJavac UP-TO-DATE
+> Task :lib-common:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lib-common:processDebugJavaRes NO-SOURCE
+> Task :lib-exoplayer:mergeDebugUnitTestResources UP-TO-DATE
+> Task :lib-exoplayer:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-common:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lib-exoplayer:processDebugManifest UP-TO-DATE
+> Task :lib-common:mapDebugSourceSetPaths UP-TO-DATE
+> Task :lib-exoplayer:javaPreCompileDebugUnitTest UP-TO-DATE
+> Task :lib-common:compileDebugLibraryResources UP-TO-DATE
+> Task :lib-exoplayer:generateDebugUnitTestAssets UP-TO-DATE
+> Task :lib-exoplayer:generateDebugAssets UP-TO-DATE
+> Task :lib-decoder:compileDebugKotlin NO-SOURCE
+> Task :lib-common:writeDebugAarMetadata UP-TO-DATE
+> Task :lib-database:compileDebugKotlin NO-SOURCE
+> Task :lib-container:compileDebugKotlin NO-SOURCE
+> Task :lib-exoplayer:mergeDebugAssets UP-TO-DATE
+> Task :lib-common:extractDeepLinksDebug UP-TO-DATE
+> Task :lib-common:processDebugManifest UP-TO-DATE
+> Task :lib-common:generateDebugAssets UP-TO-DATE
+> Task :lib-decoder:compileDebugJavaWithJavac UP-TO-DATE
+> Task :lib-container:compileDebugJavaWithJavac UP-TO-DATE
+> Task :lib-database:compileDebugJavaWithJavac UP-TO-DATE
+> Task :lib-exoplayer:checkDebugUnitTestAarMetadata UP-TO-DATE
+> Task :lib-container:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lib-common:mergeDebugAssets UP-TO-DATE
+> Task :lib-decoder:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lib-database:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lib-database:processDebugJavaRes NO-SOURCE
+> Task :lib-container:processDebugJavaRes NO-SOURCE
+> Task :lib-decoder:processDebugJavaRes NO-SOURCE
+> Task :lib-database:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lib-decoder:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lib-container:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lib-exoplayer:processDebugUnitTestManifest UP-TO-DATE
+> Task :lib-muxer:compileDebugKotlin NO-SOURCE
+> Task :lib-datasource:compileDebugKotlin NO-SOURCE
+> Task :lib-muxer:compileDebugJavaWithJavac UP-TO-DATE
+> Task :lib-datasource:compileDebugJavaWithJavac UP-TO-DATE
+> Task :lib-datasource:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lib-muxer:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lib-muxer:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lib-datasource:processDebugJavaRes NO-SOURCE
+> Task :lib-exoplayer:processDebugUnitTestResources UP-TO-DATE
+> Task :lib-extractor:compileDebugKotlin NO-SOURCE
+> Task :lib-muxer:processDebugJavaRes NO-SOURCE
+> Task :lib-datasource:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lib-exoplayer:mergeDebugUnitTestAssets UP-TO-DATE
+> Task :lib-extractor:compileDebugJavaWithJavac UP-TO-DATE
+> Task :lib-extractor:bundleLibCompileToJarDebug UP-TO-DATE
+> Task :lib-extractor:bundleLibRuntimeToJarDebug UP-TO-DATE
+> Task :lib-extractor:processDebugJavaRes NO-SOURCE
+> Task :lib-effect:compileDebugKotlin UP-TO-DATE
+
+> Task :lib-effect:compileDebugJavaWithJavac
+Note: /home/toxic/gateb-red-20260916/libraries/effect/src/main/java/androidx/media3/effect/TimestampAdjustmentShaderProgram.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :lib-effect:processDebugJavaRes
+> Task :lib-effect:bundleLibRuntimeToJarDebug
+> Task :lib-effect:bundleLibCompileToJarDebug
+> Task :lib-exoplayer:packageDebugUnitTestForUnitTest
+> Task :lib-exoplayer:compileDebugKotlin NO-SOURCE
+
+> Task :lib-exoplayer:compileDebugJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :lib-exoplayer:processDebugJavaRes NO-SOURCE
+> Task :lib-exoplayer:generateDebugUnitTestConfig
+> Task :lib-exoplayer:bundleLibRuntimeToJarDebug
+> Task :lib-exoplayer:bundleLibCompileToJarDebug
+> Task :lib-inspector:compileDebugKotlin NO-SOURCE
+> Task :lib-transformer:compileDebugKotlin NO-SOURCE
+> Task :lib-inspector:compileDebugJavaWithJavac
+> Task :lib-inspector:bundleLibCompileToJarDebug
+> Task :lib-inspector:processDebugJavaRes NO-SOURCE
+> Task :lib-inspector:bundleLibRuntimeToJarDebug
+
+> Task :lib-transformer:compileDebugJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :lib-transformer:processDebugJavaRes NO-SOURCE
+> Task :lib-transformer:bundleLibCompileToJarDebug
+> Task :lib-transformer:bundleLibRuntimeToJarDebug
+> Task :test-utils:compileDebugKotlin
+
+> Task :test-utils:compileDebugJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :test-utils:processDebugJavaRes
+> Task :test-utils:bundleLibCompileToJarDebug
+> Task :test-utils:bundleLibRuntimeToJarDebug
+> Task :test-utils-robolectric:compileDebugKotlin NO-SOURCE
+
+> Task :test-utils-robolectric:compileDebugJavaWithJavac
+Note: /home/toxic/gateb-red-20260916/libraries/test_utils_robolectric/src/main/java/androidx/media3/test/utils/robolectric/CapturingRenderersFactory.java uses or overrides a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :test-utils-robolectric:processDebugJavaRes NO-SOURCE
+> Task :test-utils-robolectric:bundleLibCompileToJarDebug
+> Task :test-utils-robolectric:bundleLibRuntimeToJarDebug
+> Task :lib-exoplayer:compileDebugUnitTestKotlin
+
+> Task :lib-exoplayer:compileDebugUnitTestJavaWithJavac
+Note: Some input files use or override a deprecated API.
+Note: Recompile with -Xlint:deprecation for details.
+
+> Task :lib-exoplayer:processDebugUnitTestJavaRes
+
+> Task :lib-exoplayer:testDebugUnitTest
+CompileCommand: exclude android/content/pm/PackageParser.$$robo$$* bool exclude = true
+
+WARNING: A restricted method in java.lang.System has been called
+WARNING: java.lang.System::load has been called by org.robolectric.nativeruntime.DefaultNativeRuntimeLoader in an unnamed module
+WARNING: Use --enable-native-access=ALL-UNNAMED to avoid a warning for callers in this module
+WARNING: Restricted methods will be blocked in a future release unless native access is enabled
+
+
+> Task :lib-exoplayer:testDebugUnitTest
+
+DefaultTrackSelectorTest > selectTracks_pixel10_sameAvcProfileLevelDifferentBitrates_selectsFixed FAILED
+    com.google.common.truth.AssertionErrorWithFacts at DefaultTrackSelectorTest.java:2339
+
+MediaCodecVideoRendererTest > canReuseCodec_pixel10_unequalAvcKeys_returnsNo FAILED
+    com.google.common.truth.ComparisonFailureWithFacts at MediaCodecVideoRendererTest.java:7970
+
+MediaCodecVideoRendererTest > canReuseCodec_pixel10_sameAvcKeyDifferentBitrate_returnsNo FAILED
+    com.google.common.truth.ComparisonFailureWithFacts at MediaCodecVideoRendererTest.java:7951
+
+27 tests completed, 3 failed
+
+> Task :lib-exoplayer:testDebugUnitTest FAILED
+
+[Incubating] Problems report is available at: file:///home/toxic/gateb-red-20260916/buildout/reports/problems/problems-report.html
+
+FAILURE: Build failed with an exception.
+
+* What went wrong:
+Execution failed for task ':lib-exoplayer:testDebugUnitTest'.
+> There were failing tests. See the report at: file:///home/toxic/gateb-red-20260916/libraries/exoplayer/buildout/reports/tests/testDebugUnitTest/index.html
+
+* Try:
+> Run with --scan to get full insights from a Build Scan (powered by Develocity).
+
+Deprecated Gradle features were used in this build, making it incompatible with Gradle 10.
+
+You can use '--warning-mode all' to show the individual deprecation warnings and determine if they come from your own scripts or plugins.
+
+For more on this, please refer to https://docs.gradle.org/9.6.1/userguide/command_line_interface.html#sec:command_line_warnings in the Gradle documentation.
+
+BUILD FAILED in 18s
+233 actionable tasks: 27 executed, 206 up-to-date
+EXITCODE=1
+2026-09-16T15:10:39Z
