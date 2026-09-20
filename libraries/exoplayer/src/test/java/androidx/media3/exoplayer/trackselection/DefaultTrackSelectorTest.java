@@ -47,6 +47,7 @@ import static org.robolectric.Shadows.shadowOf;
 
 import android.content.Context;
 import android.media.Spatializer;
+import android.os.Build;
 import android.view.accessibility.CaptioningManager;
 import androidx.media3.common.C;
 import androidx.media3.common.ColorInfo;
@@ -94,6 +95,7 @@ import org.junit.runner.RunWith;
 import org.mockito.Mock;
 import org.mockito.junit.MockitoJUnit;
 import org.mockito.junit.MockitoRule;
+import org.robolectric.shadows.ShadowBuild;
 import org.robolectric.shadows.ShadowDisplay;
 import org.robolectric.shadows.ShadowDisplayManager;
 
@@ -2168,6 +2170,280 @@ public final class DefaultTrackSelectorTest {
             new RendererCapabilities[] {AUDIO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
     assertThat(result.length).isEqualTo(1);
     assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 0, 1);
+  }
+
+  @Test
+  public void selectTracksWithMultipleVideoTracksWithMixedAvcProfiles() throws Exception {
+    Format baselineFormat = VIDEO_FORMAT.buildUpon().setCodecs("avc1.42001F").build();
+    Format highFormat = VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").build();
+
+    // Tracks with different AVC profiles must not share an adaptive selection, so we expect a
+    // fixed selection containing the first stream.
+    TrackGroupArray trackGroups = singleTrackGroup(baselineFormat, highFormat);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, baselineFormat);
+
+    // The same applies if the tracks are provided in the opposite order.
+    trackGroups = singleTrackGroup(highFormat, baselineFormat);
+    result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, highFormat);
+  }
+
+  @Test
+  public void selectTracksWithMultipleVideoTracksWithMixedAvcLevels() throws Exception {
+    Format level31Format = VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").build();
+    Format level40Format = VIDEO_FORMAT.buildUpon().setCodecs("avc1.640028").build();
+
+    // Tracks with different AVC levels must not share an adaptive selection either.
+    TrackGroupArray trackGroups = singleTrackGroup(level31Format, level40Format);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, level31Format);
+  }
+
+  @Test
+  public void selectTracksWithMultipleVideoTracksWithSameAvcProfileAndLevel() throws Exception {
+    Format firstFormat =
+        VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(400000).build();
+    Format secondFormat =
+        VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(800000).build();
+
+    // Tracks declaring the same AVC profile and level still share an adaptive selection
+    // (ordered by descending bitrate).
+    TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+  }
+
+  /**
+   * avcC box payloads (AVCDecoderConfigurationRecord) extracted from real Big Buck Bunny files.
+   * Byte 1 is profile_idc, byte 2 profile_compatibility, byte 3 level_idc, so the RFC 6381 codec
+   * string is {@code "avc1." + hex(bytes 1..3)}.
+   */
+  private static final String IA_BBB_AVCC_HEX =
+      "0142c00dffe1001b6742c00dab40d0fdff80140013880000030008000003018478a15501000468ce32c8";
+
+  private static final String BBB_BASELINE_AVCC_HEX =
+      "0142c01effe1001c6742c01ed901a1fbff00d500d01000000300100000030300f162e48001000568cb83cb20";
+  private static final String BBB_HIGH_AVCC_HEX =
+      "01640028ffe1001d67640028acd941a1fbff00d500d01000000300100000030300f183196001000668ebe3cb22c0fdf8f800";
+
+  /**
+   * Derives the RFC 6381 AVC codec string from a hex-encoded avcC box payload, the same way a
+   * demuxer builds {@link Format#codecs} from the sample entry.
+   */
+  private static String avcCodecStringFromAvcCBox(String avcCBoxHex) {
+    byte[] box = new byte[avcCBoxHex.length() / 2];
+    for (int i = 0; i < box.length; i++) {
+      box[i] = (byte) Integer.parseInt(avcCBoxHex.substring(i * 2, i * 2 + 2), 16);
+    }
+    return String.format("avc1.%02x%02x%02x", box[1], box[2], box[3]);
+  }
+
+  @Test
+  public void selectTracksWithRealWorldBigBuckBunnyLadder() throws Exception {
+    // The codec strings below are not hand-written: they are derived inside this test from the
+    // avcC (AVCDecoderConfigurationRecord) boxes of real Big Buck Bunny files. The payloads were
+    // extracted with:
+    //   python3 -c "import struct; d=open(<file>,'rb').read(); i=d.find(b'avcC');
+    //   sz=struct.unpack('>I',d[i-4:i])[0]; print(d[i+4:i-4+sz].hex())"
+    // and can be re-extracted from the same files at any time.
+    // - ia_bbb.mp4: the original Big Buck Bunny movie
+    //   (https://archive.org/download/BigBuckBunny_328/BigBuckBunny_512kb.mp4, the file
+    //   referenced by GitHub ab2525/ia-more_animation via git-annex)
+    // - bbb_baseline.mp4: 12s transcode of ia_bbb.mp4:
+    //   ffmpeg -i ia_bbb.mp4 -t 12 -c:v libx264 -profile:v baseline -level 3.0 -pix_fmt yuv420p
+    // - bbb_high.mp4: 12s transcode of ia_bbb.mp4:
+    //   ffmpeg -i ia_bbb.mp4 -t 12 -c:v libx264 -profile:v high -level 4.0 -pix_fmt yuv420p
+    String originalCodecs = avcCodecStringFromAvcCBox(IA_BBB_AVCC_HEX);
+    String baselineCodecs = avcCodecStringFromAvcCBox(BBB_BASELINE_AVCC_HEX);
+    String highCodecs = avcCodecStringFromAvcCBox(BBB_HIGH_AVCC_HEX);
+    // The derived strings must match the known-good values for these files.
+    assertThat(originalCodecs).isEqualTo("avc1.42c00d"); // Constrained Baseline, level 1.3
+    assertThat(baselineCodecs).isEqualTo("avc1.42c01e"); // Constrained Baseline, level 3.0
+    assertThat(highCodecs).isEqualTo("avc1.640028"); // High, level 4.0
+    Format original = VIDEO_FORMAT.buildUpon().setCodecs(originalCodecs).build();
+    Format baseline30 = VIDEO_FORMAT.buildUpon().setCodecs(baselineCodecs).build();
+    Format high40 = VIDEO_FORMAT.buildUpon().setCodecs(highCodecs).build();
+
+    // Same AVC profile (Baseline) but different levels: must not share an adaptive selection.
+    TrackGroupArray trackGroups = singleTrackGroup(original, baseline30);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, original);
+
+    // Different AVC profiles (Baseline vs High): must not share an adaptive selection either.
+    trackGroups = singleTrackGroup(baseline30, high40);
+    result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertFixedSelection(result.selections[0], trackGroups, baseline30);
+
+    // The full three-track ladder must not be bundled into one adaptive selection, which is
+    // what the unpatched selector produces.
+    trackGroups = singleTrackGroup(original, baseline30, high40);
+    result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertThat(result.selections[0].length()).isLessThan(3);
+  }
+
+  @Test
+  public void selectTracksWithMultipleVideoTracksWithMissingAvcCodecStrings() throws Exception {
+    // Tracks without codec metadata are treated as compatible, preserving existing behavior.
+    Format firstFormat = VIDEO_FORMAT.buildUpon().setAverageBitrate(400000).build();
+    Format secondFormat = VIDEO_FORMAT.buildUpon().setAverageBitrate(800000).build();
+    TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+    TrackSelectorResult result =
+        trackSelector.selectTracks(
+            new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+    assertThat(result.length).isEqualTo(1);
+    assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+  }
+
+  // ---- Gate B (issue #3185): Pixel 10 family device-aware mitigation ----
+
+  @Test
+  public void selectTracks_pixel10_sameAvcProfileLevelDifferentBitrates_selectsFixed()
+      throws Exception {
+    fakeDevice(/* device= */ "mustang", /* model= */ "Pixel 10 Pro XL");
+    try {
+      Format firstFormat =
+          VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(400000).build();
+      Format secondFormat =
+          VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(800000).build();
+
+      // On Pixel 10 family devices the Tensor G5 hardware AVC decoder freezes on any bitrate
+      // switch, so same-profile/level tracks with differing bitrates must not share an adaptive
+      // selection: expect a fixed (single-track) selection instead of an adaptive one.
+      TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+      TrackSelectorResult result =
+          trackSelector.selectTracks(
+              new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+      assertThat(result.length).isEqualTo(1);
+      assertThat(result.selections[0]).isInstanceOf(FixedTrackSelection.class);
+      assertThat(result.selections[0].length()).isEqualTo(1);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  @Test
+  public void selectTracks_pixel10_mixedAvcProfiles_selectsFixed() throws Exception {
+    fakeDevice(/* device= */ "blazer", /* model= */ "Pixel 10 Pro");
+    try {
+      // The exact codec strings from the issue #3185 report: SD avc1.4D401F, HD avc1.64002A.
+      Format sdFormat = VIDEO_FORMAT.buildUpon().setCodecs("avc1.4D401F").build();
+      Format hdFormat = VIDEO_FORMAT.buildUpon().setCodecs("avc1.64002A").build();
+      TrackGroupArray trackGroups = singleTrackGroup(sdFormat, hdFormat);
+      TrackSelectorResult result =
+          trackSelector.selectTracks(
+              new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+      assertThat(result.length).isEqualTo(1);
+      assertFixedSelection(result.selections[0], trackGroups, sdFormat);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  @Test
+  public void selectTracks_pixel9Family_sameAvcProfileLevelDifferentBitrates_selectsAdaptive()
+      throws Exception {
+    String[][] pixel9Devices = {
+      {"tokay", "Pixel 9"},
+      {"komodo", "Pixel 9 Pro XL"},
+      {"comet", "Pixel 9 Pro Fold"},
+    };
+    for (String[] pixel9Device : pixel9Devices) {
+      fakeDevice(pixel9Device[0], pixel9Device[1]);
+      try {
+        Format firstFormat =
+            VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(400000).build();
+        Format secondFormat =
+            VIDEO_FORMAT.buildUpon().setCodecs("avc1.64001F").setAverageBitrate(800000).build();
+
+        // Off the Pixel 10 family, Gate B is a no-op: same-profile/level bitrate switches
+        // stay compatible (normal ABR), ordered by descending bitrate.
+        TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+        TrackSelectorResult result =
+            trackSelector.selectTracks(
+                new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+        assertThat(result.length).isEqualTo(1);
+        assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+      } finally {
+        restoreDevice();
+      }
+    }
+  }
+
+  @Test
+  public void selectTracks_pixel10_malformedOrMissingAvcCodecStrings_staysAdaptive()
+      throws Exception {
+    fakeDevice(/* device= */ "frankel", /* model= */ "Pixel 10");
+    try {
+      // Malformed, multi-codec, and non-AVC codec strings fail open even on Pixel 10.
+      String[] badCodecStrings = {
+        "avc1.6400", "avc1.6400zz", "avc1.64001f,mp4a.40.2", "mp4a.40.2",
+      };
+      for (String codecs : badCodecStrings) {
+        Format firstFormat =
+            VIDEO_FORMAT.buildUpon().setCodecs(codecs).setAverageBitrate(400000).build();
+        Format secondFormat =
+            VIDEO_FORMAT.buildUpon().setCodecs(codecs).setAverageBitrate(800000).build();
+        TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+        TrackSelectorResult result =
+            trackSelector.selectTracks(
+                new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+        assertThat(result.length).isEqualTo(1);
+        assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+      }
+      // Missing codec strings fail open too.
+      Format firstFormat = VIDEO_FORMAT.buildUpon().setAverageBitrate(400000).build();
+      Format secondFormat = VIDEO_FORMAT.buildUpon().setAverageBitrate(800000).build();
+      TrackGroupArray trackGroups = singleTrackGroup(firstFormat, secondFormat);
+      TrackSelectorResult result =
+          trackSelector.selectTracks(
+              new RendererCapabilities[] {VIDEO_CAPABILITIES}, trackGroups, periodId, TIMELINE);
+      assertThat(result.length).isEqualTo(1);
+      assertAdaptiveSelection(result.selections[0], trackGroups.get(0), 1, 0);
+    } finally {
+      restoreDevice();
+    }
+  }
+
+  private String originalDevice;
+  private String originalModel;
+  private String originalProduct;
+
+  /** Fakes a Pixel device via Robolectric's {@link ShadowBuild}; callers must use try/finally. */
+  private void fakeDevice(String device, String model) {
+    originalDevice = Build.DEVICE;
+    originalModel = Build.MODEL;
+    originalProduct = Build.PRODUCT;
+    ShadowBuild.setDevice(device);
+    ShadowBuild.setModel(model);
+    ShadowBuild.setProduct(device);
+  }
+
+  private void restoreDevice() {
+    ShadowBuild.setDevice(originalDevice);
+    ShadowBuild.setModel(originalModel);
+    ShadowBuild.setProduct(originalProduct);
   }
 
   @Test

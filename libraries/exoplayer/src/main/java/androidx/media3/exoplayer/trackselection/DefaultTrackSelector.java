@@ -67,6 +67,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import androidx.media3.exoplayer.source.MediaSource.MediaPeriodId;
 import androidx.media3.exoplayer.source.TrackGroupArray;
 import androidx.media3.exoplayer.upstream.BandwidthMeter;
+import androidx.media3.exoplayer.util.Pixel10FamilyDevice;
 import androidx.media3.exoplayer.util.SpatializerWrapper;
 import com.google.common.base.Predicate;
 import com.google.common.collect.ComparisonChain;
@@ -3771,6 +3772,15 @@ public class DefaultTrackSelector extends MappingTrackSelector
     public abstract boolean isCompatibleForAdaptationWith(T otherTrack);
   }
 
+  /**
+   * Returns the packed AVC profile/level key for {@code codecs}, or null if the profile/level
+   * cannot be determined. Delegates to {@link Pixel10FamilyDevice#parseAvcProfileLevelKey(String)}
+   * so Gate A and Gate B share exactly one implementation (and one cache) of the RFC 6381 parse.
+   */
+  static @Nullable Integer parseAvcProfileLevelKey(String codecs) {
+    return Pixel10FamilyDevice.parseAvcProfileLevelKey(codecs);
+  }
+
   private static final class VideoTrackInfo extends TrackInfo<VideoTrackInfo> {
 
     /**
@@ -3841,6 +3851,7 @@ public class DefaultTrackSelector extends MappingTrackSelector
     private final int codecPreferenceScore;
     private final boolean isHdr;
     @Nullable private final String resolvedMimeType;
+    @Nullable private final Integer avcProfileLevelKey;
 
     public VideoTrackInfo(
         int rendererIndex,
@@ -3936,6 +3947,7 @@ public class DefaultTrackSelector extends MappingTrackSelector
           RendererCapabilities.getHardwareAccelerationSupport(formatSupport)
               == RendererCapabilities.HARDWARE_ACCELERATION_SUPPORTED;
       this.resolvedMimeType = resolvedMimeType;
+      avcProfileLevelKey = getAvcProfileLevelKey(format);
       codecPreferenceScore = getVideoCodecPreferenceScore(resolvedMimeType);
       isHdr = usesPrimaryOrFallbackDecoder && ColorInfo.isTransferHdr(format.colorInfo);
       selectionEligibility = evaluateSelectionEligibility(formatSupport, requiredAdaptiveSupport);
@@ -3952,7 +3964,59 @@ public class DefaultTrackSelector extends MappingTrackSelector
               || Objects.equals(this.resolvedMimeType, otherTrack.resolvedMimeType))
           && (parameters.allowVideoMixedDecoderSupportAdaptiveness
               || (this.usesPrimaryOrFallbackDecoder == otherTrack.usesPrimaryOrFallbackDecoder
-                  && this.usesHardwareAcceleration == otherTrack.usesHardwareAcceleration));
+                  && this.usesHardwareAcceleration == otherTrack.usesHardwareAcceleration))
+          && areAvcCodecProfilesCompatibleForAdaptation(
+              this.avcProfileLevelKey, otherTrack.avcProfileLevelKey)
+          && areAvcBitratesCompatibleForAdaptation(this, otherTrack);
+    }
+
+    /**
+     * Returns the packed AVC profile/level key parsed from the {@code avc1.PPCCLL} codecs string
+     * (RFC 6381), or null if the format is not AVC or the profile/level cannot be determined.
+     */
+    @Nullable
+    private static Integer getAvcProfileLevelKey(Format format) {
+      if (!MimeTypes.VIDEO_H264.equals(format.sampleMimeType) || format.codecs == null) {
+        return null;
+      }
+      return parseAvcProfileLevelKey(format.codecs);
+    }
+
+    /**
+     * Returns whether two tracks may share an adaptive selection with respect to their AVC codec
+     * profiles. Tracks whose AVC profile/level cannot be determined are treated as compatible, so
+     * this only partitions selections where both tracks declare differing profiles or levels.
+     */
+    private static boolean areAvcCodecProfilesCompatibleForAdaptation(
+        @Nullable Integer avcProfileLevelKey, @Nullable Integer otherAvcProfileLevelKey) {
+      return avcProfileLevelKey == null
+          || otherAvcProfileLevelKey == null
+          || avcProfileLevelKey.equals(otherAvcProfileLevelKey);
+    }
+
+    /**
+     * Gate B (issue #3185): on Pixel 10 family devices (Tensor G5) the hardware AVC decoder freezes
+     * on any bitrate switch, even between tracks with the same AVC profile/level. Declaring
+     * same-key tracks with differing bitrates incompatible forces a drain-and-reinitialize instead
+     * of seamless codec reuse. Off Pixel 10 this is a no-op (normal ABR). Unknown bitrates fail
+     * open, like unknown keys in Gate A.
+     */
+    private static boolean areAvcBitratesCompatibleForAdaptation(
+        VideoTrackInfo track, VideoTrackInfo otherTrack) {
+      if (!Pixel10FamilyDevice.isPixel10FamilyDevice()) {
+        return true;
+      }
+      Integer key = track.avcProfileLevelKey;
+      Integer otherKey = otherTrack.avcProfileLevelKey;
+      if (key == null || otherKey == null || !key.equals(otherKey)) {
+        // Gate A already rejects known-unequal keys globally; unknown keys fail open.
+        return true;
+      }
+      int bitrate = track.format.bitrate;
+      int otherBitrate = otherTrack.format.bitrate;
+      return bitrate == Format.NO_VALUE
+          || otherBitrate == Format.NO_VALUE
+          || bitrate == otherBitrate;
     }
 
     private @SelectionEligibility int evaluateSelectionEligibility(

@@ -20,6 +20,7 @@ import static android.view.Display.DEFAULT_DISPLAY;
 import static androidx.media3.exoplayer.DecoderReuseEvaluation.DISCARD_REASON_MAX_INPUT_SIZE_EXCEEDED;
 import static androidx.media3.exoplayer.DecoderReuseEvaluation.DISCARD_REASON_VIDEO_FRAME_RATE_CHANGED;
 import static androidx.media3.exoplayer.DecoderReuseEvaluation.DISCARD_REASON_VIDEO_MAX_RESOLUTION_EXCEEDED;
+import static androidx.media3.exoplayer.DecoderReuseEvaluation.DISCARD_REASON_WORKAROUND;
 import static androidx.media3.exoplayer.DecoderReuseEvaluation.REUSE_RESULT_NO;
 import static androidx.media3.exoplayer.video.VideoSink.RELEASE_FIRST_FRAME_IMMEDIATELY;
 import static androidx.media3.exoplayer.video.VideoSink.RELEASE_FIRST_FRAME_WHEN_PREVIOUS_STREAM_PROCESSED;
@@ -92,6 +93,7 @@ import androidx.media3.exoplayer.mediacodec.MediaCodecSelector;
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil;
 import androidx.media3.exoplayer.mediacodec.MediaCodecUtil.DecoderQueryException;
 import androidx.media3.exoplayer.source.MediaSource;
+import androidx.media3.exoplayer.util.Pixel10FamilyDevice;
 import androidx.media3.exoplayer.video.VideoRendererEventListener.EventDispatcher;
 import com.google.common.collect.ImmutableList;
 import com.google.errorprone.annotations.CanIgnoreReturnValue;
@@ -1383,6 +1385,15 @@ public class MediaCodecVideoRenderer extends MediaCodecRenderer
     if (shouldDiscardCodecForFrameRateChange(
         codecInfo, oldFormat, newFormat, isAdaptiveFormatChange)) {
       discardReasons |= DISCARD_REASON_VIDEO_FRAME_RATE_CHANGED;
+    }
+    if (Pixel10FamilyDevice.isPixel10FamilyDevice()
+        && Pixel10FamilyDevice.shouldForceAvcCodecReinit(oldFormat, newFormat)) {
+      // Gate B (issue #3185): the Tensor G5 hardware AVC decoder on Pixel 10 family devices
+      // freezes on any bitrate/configuration switch, so refuse reuse and drain-and-reinitialize
+      // instead. The same decoder is reconfigured (no forced software decode); pending output is
+      // drained first and the output surface is not cleared, so the last frame stays up during
+      // the brief re-initialization stall instead of freezing permanently.
+      discardReasons |= DISCARD_REASON_WORKAROUND;
     }
 
     return new DecoderReuseEvaluation(
