@@ -1,3 +1,26 @@
+# media
+
+![Fork](https://img.shields.io/badge/fork-androidx%2Fmedia-orange)
+![Branch](https://img.shields.io/badge/default%20branch-release-informational)
+![License](https://img.shields.io/badge/license-Apache--2.0-green)
+
+> ## 🔗 Fork note
+>
+> This repository is a **fork of [`androidx/media`](https://github.com/androidx/media)**
+> — AndroidX Media3: support libraries for media use cases on Android, including
+> ExoPlayer, an extensible media player.
+>
+> - The upstream AndroidX Media README, release notes, and contributing guidance
+>   are preserved verbatim below.
+> - Default branch here is **`release`** (the stable-release branch upstream);
+>   last forked commit: version 1.11.1 bump.
+> - Divergences from upstream are not inventoried in this README — any
+>   fork-local changes are visible in this repo's commit history.
+> - Upstream issues belong at
+>   [Google's issue tracker](https://issuetracker.google.com/issues/new?component=1110857&template=1668219),
+>   not here.
+
+---
 # AndroidX Media
 
 AndroidX Media is a collection of libraries for implementing media use cases on
@@ -196,3 +219,15 @@ The `release` branch holds the most recent stable release.
 
 To develop AndroidX Media using Android Studio, simply open the project in the
 root directory of this repository.
+
+---
+
+## Security (fork note)
+
+AndroidX Media is an actively maintained Google library — see
+[SECURITY.md](SECURITY.md) in this repo for the upstream security policy.
+**Report vulnerabilities upstream**, not to this fork.
+
+## License (fork note)
+
+Apache-2.0 — see [`LICENSE`](LICENSE) in this repo.
